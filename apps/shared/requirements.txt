@@ -1,0 +1,3 @@
+# Shared dependencies
+python-dotenv>=1.0.0
+PyGithub>=2.1.1
