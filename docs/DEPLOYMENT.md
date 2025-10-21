@@ -1,0 +1,474 @@
+# Deployment Guide
+
+## Prerequisites
+
+Before deploying Dogwalker, you need:
+
+1. **Railway Account** - Sign up at https://railway.app
+2. **GitHub Account** - For repository access and dog identities
+3. **Slack Workspace** - With admin access to install apps
+4. **Anthropic API Key** - From https://console.anthropic.com
+
+## Environment Variables
+
+Create a `.env` file (see `.env.example`) with these values:
+
+```bash
+# Anthropic API (required)
+ANTHROPIC_API_KEY=sk-ant-...
+
+# GitHub (required)
+GITHUB_TOKEN=ghp_...              # From https://github.com/settings/tokens
+GITHUB_REPO=owner/reponame        # e.g., "bryans-org/my-app"
+
+# Slack (required)
+SLACK_BOT_TOKEN=xoxb-...          # From Slack App settings
+SLACK_APP_TOKEN=xapp-...          # For Socket Mode
+
+# Redis (Railway provides this automatically)
+REDIS_URL=redis://localhost:6379  # Local only, Railway auto-sets
+
+# Dog Identity (optional, has defaults)
+DOG_NAME=Bryans-Coregi
+DOG_EMAIL=coregi@bryanowens.dev
+BASE_BRANCH=main
+```
+
+## Local Development Setup
+
+### 1. Install Dependencies
+
+```bash
+# Install orchestrator dependencies
+cd apps/orchestrator
+pip install -r requirements.txt
+
+# Install worker dependencies
+cd ../worker
+pip install -r requirements.txt
+
+# Install shared dependencies
+cd ../shared
+pip install -r requirements.txt
+```
+
+### 2. Start Redis
+
+```bash
+# macOS (Homebrew)
+brew install redis
+brew services start redis
+
+# Linux (apt)
+sudo apt-get install redis-server
+sudo systemctl start redis
+
+# Docker
+docker run -d -p 6379:6379 redis:latest
+```
+
+### 3. Start Orchestrator (Slack Bot)
+
+```bash
+cd apps/orchestrator
+python src/bot.py
+```
+
+You should see: "Starting Dogwalker Slack bot..."
+
+### 4. Start Worker (Celery)
+
+In a new terminal:
+
+```bash
+cd apps/worker
+celery -A src.celery_app worker --loglevel=info
+```
+
+You should see: "celery@hostname ready."
+
+### 5. Test in Slack
+
+1. Go to your Slack workspace
+2. In any channel where the bot is added:
+   ```
+   @dogwalker hello world
+   ```
+3. You should see: "🐕 Bryans-Coregi is taking this task!"
+
+## Setting Up Slack App
+
+### 1. Create Slack App
+
+1. Go to https://api.slack.com/apps
+2. Click "Create New App" → "From scratch"
+3. Name: "Dogwalker"
+4. Choose your workspace
+
+### 2. Configure Bot Token Scopes
+
+Go to "OAuth & Permissions" and add these scopes:
+
+**Bot Token Scopes:**
+- `app_mentions:read` - Receive @mentions
+- `chat:write` - Post messages
+- `channels:history` - Read channel messages
+- `groups:history` - Read private channel messages
+
+### 3. Enable Socket Mode
+
+1. Go to "Socket Mode" in sidebar
+2. Enable Socket Mode
+3. Create an app-level token with `connections:write` scope
+4. Copy token → This is your `SLACK_APP_TOKEN`
+
+### 4. Subscribe to Events
+
+1. Go to "Event Subscriptions"
+2. Enable Events
+3. Subscribe to bot events:
+   - `app_mention` - When someone @mentions the bot
+   - `message.channels` - Messages in channels (optional)
+
+### 5. Install App to Workspace
+
+1. Go to "Install App"
+2. Click "Install to Workspace"
+3. Authorize the app
+4. Copy "Bot User OAuth Token" → This is your `SLACK_BOT_TOKEN`
+
+### 6. Invite Bot to Channel
+
+In Slack:
+```
+/invite @dogwalker
+```
+
+## Setting Up GitHub
+
+### 1. Create Dog GitHub Accounts
+
+Create separate GitHub accounts for each dog:
+
+**Example:**
+- Username: `Bryans-Coregi`
+- Email: `coregi@bryanowens.dev`
+- Display Name: `Coregi (Dogwalker AI)`
+
+### 2. Create Personal Access Token
+
+For the dog account:
+
+1. Go to https://github.com/settings/tokens
+2. Click "Generate new token" → "Fine-grained token"
+3. Set expiration (1 year recommended)
+4. Select repositories (specific repos or all)
+5. Set permissions:
+   - **Contents**: Read and write
+   - **Pull requests**: Read and write
+   - **Workflows**: Read and write (if modifying CI/CD)
+6. Generate token
+7. Copy token → This is your `GITHUB_TOKEN`
+
+### 3. Add Dog as Collaborator
+
+Add the dog GitHub account to your target repository:
+
+1. Go to repository settings
+2. Collaborators → Add people
+3. Add dog account (e.g., `Bryans-Coregi`)
+4. Grant "Write" access
+
+## Railway Deployment
+
+### 1. Create Railway Project
+
+1. Go to https://railway.app
+2. Click "New Project"
+3. Choose "Empty Project"
+4. Name: "dogwalker"
+
+### 2. Add Redis Service
+
+1. Click "New" → "Database" → "Add Redis"
+2. Railway automatically sets `REDIS_URL` environment variable
+
+### 3. Deploy Orchestrator
+
+1. Click "New" → "GitHub Repo"
+2. Select your dogwalker repo
+3. Root Directory: `/apps/orchestrator`
+4. Name: "orchestrator"
+5. Add environment variables (see list above)
+6. Deploy
+
+Railway will:
+- Build: `pip install -r requirements.txt`
+- Start: `python src/bot.py` (from railway.json)
+
+### 4. Deploy Worker
+
+1. Click "New" → "GitHub Repo" (same repo)
+2. Root Directory: `/apps/worker`
+3. Name: "worker"
+4. Add same environment variables as orchestrator
+5. Deploy
+
+Railway will:
+- Build: `pip install -r requirements.txt`
+- Start: `celery -A src.celery_app worker --loglevel=info`
+
+### 5. Set Environment Variables
+
+For both orchestrator and worker services:
+
+1. Go to service → Variables
+2. Add all required variables from `.env.example`
+3. Use `${{REDIS_URL}}` for Redis (Railway provides this)
+
+**Important:** Each service needs the same environment variables!
+
+### 6. Verify Deployment
+
+Check logs for each service:
+
+**Orchestrator logs should show:**
+```
+Starting Dogwalker Slack bot...
+Connected to Slack
+```
+
+**Worker logs should show:**
+```
+celery@worker ready.
+```
+
+## Testing End-to-End
+
+1. In Slack, mention the bot:
+   ```
+   @dogwalker add a hello world function to README.md
+   ```
+
+2. Check orchestrator logs:
+   ```
+   Creating task C123_1234567890.123456 for dog Bryans-Coregi
+   Task queued with Celery task ID: abc123
+   ```
+
+3. Check worker logs:
+   ```
+   Worker executing task C123_1234567890.123456 as Bryans-Coregi
+   Cloning repository...
+   Running Aider...
+   Pushing branch...
+   Creating pull request...
+   Task completed successfully
+   ```
+
+4. Check Slack thread:
+   ```
+   🐕 Bryans-Coregi is taking this task!
+   ✅ PR ready: https://github.com/owner/repo/pull/123
+   ```
+
+5. Check GitHub:
+   - New branch: `dogwalker/1234567890-123456`
+   - New PR with changes
+   - PR description includes task details
+
+## Troubleshooting
+
+### Bot doesn't respond in Slack
+
+**Check:**
+- Orchestrator service is running (Railway logs)
+- `SLACK_BOT_TOKEN` and `SLACK_APP_TOKEN` are correct
+- Socket Mode is enabled
+- Bot is invited to channel (`/invite @dogwalker`)
+
+**Fix:**
+```bash
+# Test locally first
+cd apps/orchestrator
+python src/bot.py
+# Should show "Connected to Slack"
+```
+
+### Worker doesn't process tasks
+
+**Check:**
+- Worker service is running (Railway logs)
+- `REDIS_URL` is set correctly
+- Worker can connect to Redis
+
+**Fix:**
+```bash
+# Test worker locally
+cd apps/worker
+celery -A src.celery_app worker --loglevel=info
+# Should show "celery@hostname ready."
+```
+
+### Git push fails
+
+**Check:**
+- `GITHUB_TOKEN` is valid and not expired
+- Dog account has write access to repo
+- `GITHUB_REPO` format is correct (`owner/repo`)
+
+**Fix:**
+```bash
+# Test token manually
+curl -H "Authorization: token $GITHUB_TOKEN" \
+  https://api.github.com/user
+# Should return dog account info
+```
+
+### Aider fails to make changes
+
+**Check:**
+- `ANTHROPIC_API_KEY` is valid
+- Task description is clear and specific
+- Repository files are readable
+
+**Fix:**
+```bash
+# Test Aider locally
+cd scripts/tests
+python test_aider.py
+```
+
+### PR creation fails
+
+**Check:**
+- Branch was pushed successfully
+- GitHub token has PR permissions
+- Base branch (main) exists
+
+**Fix:**
+- Check worker logs for specific error
+- Verify branch exists: `git ls-remote origin dogwalker/*`
+
+## Monitoring
+
+### Railway Dashboard
+
+Monitor services in Railway dashboard:
+
+1. **Metrics** - CPU, memory, network usage
+2. **Logs** - Real-time logs for debugging
+3. **Deploys** - Deployment history
+
+### Slack Monitoring
+
+All task updates post to Slack threads:
+- Task started: "🐕 Dog is taking this task!"
+- Task completed: "✅ PR ready: [link]"
+- Task failed: "❌ Task failed: [error]"
+
+### Cost Tracking
+
+Monitor costs:
+1. **Railway:** ~$20-40/month (infrastructure)
+2. **Anthropic API:** ~$3-10/task (depends on complexity)
+3. **GitHub:** Free (under 2000 API requests/hour)
+4. **Slack:** Free (under 10K messages/month)
+
+## Updating Deployment
+
+### Push Updates
+
+Railway auto-deploys on git push:
+
+```bash
+git add .
+git commit -m "Update worker logic"
+git push origin main
+```
+
+Railway will:
+1. Detect changes
+2. Rebuild affected services
+3. Deploy with zero downtime
+
+### Manual Deploy
+
+Force redeploy in Railway dashboard:
+1. Go to service
+2. Click "Deploy" → "Redeploy"
+
+## Scaling
+
+### Add More Workers
+
+In Railway:
+1. Click "New" → "GitHub Repo"
+2. Root Directory: `/apps/worker`
+3. Name: "worker-2"
+4. Same environment variables
+5. Deploy
+
+Now you have 2 workers processing tasks in parallel!
+
+### Add More Dogs
+
+Update `apps/orchestrator/src/dog_selector.py`:
+
+```python
+self.available_dogs = [
+    {"name": "Bryans-Coregi", "email": "coregi@bryanowens.dev"},
+    {"name": "Bryans-Bitbull", "email": "bitbull@bryanowens.dev"},
+]
+```
+
+Redeploy orchestrator.
+
+## Security Best Practices
+
+1. **Rotate tokens regularly** (every 3-6 months)
+2. **Use fine-grained GitHub tokens** (limit to specific repos)
+3. **Enable 2FA** on all accounts
+4. **Monitor API usage** (set up alerts for anomalies)
+5. **Review PRs carefully** (AI can make mistakes)
+6. **Limit Slack channels** (only invite bot to relevant channels)
+
+## Backup & Recovery
+
+### Configuration Backup
+
+Keep `.env.example` updated with latest required variables.
+
+### Token Recovery
+
+If tokens are lost:
+1. GitHub: Generate new personal access token
+2. Slack: Regenerate tokens in app settings
+3. Anthropic: Get from console.anthropic.com
+
+### Service Recovery
+
+If Railway services fail:
+1. Check logs for errors
+2. Verify environment variables
+3. Redeploy service
+4. Test end-to-end workflow
+
+## Next Steps
+
+After successful deployment:
+
+1. **Invite beta users** to Slack workspace
+2. **Monitor task success rate** (target: >80%)
+3. **Track costs** per task
+4. **Gather feedback** on code quality
+5. **Iterate** on prompt engineering for better results
+
+## Support
+
+For issues:
+1. Check Railway logs first
+2. Test components locally
+3. Verify all environment variables
+4. Review this deployment guide
+5. Open GitHub issue with logs

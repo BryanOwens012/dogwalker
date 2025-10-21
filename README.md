@@ -87,18 +87,61 @@ Human reviews and merges (or requests changes)
 
 ## Project Structure
 
+Monorepo structure with separate apps for orchestrator, worker, and shared utilities:
+
 ```
 dogwalker/
-├── .env.example          # Template for environment variables
-├── requirements.txt      # Python dependencies
-├── tasks.py             # Celery task definitions (dog work)
-├── slack_bot.py         # Slack listener (Dogwalker interface)
-├── github_utils.py      # GitHub API helpers (PR creation, etc.)
-├── config.py            # Configuration management
-├── worker.py            # Celery worker entry point
-├── Procfile             # Railway process definitions
-├── railway.toml         # Railway configuration
-└── README.md            # Setup and usage instructions
+├── apps/
+│   ├── orchestrator/         # Slack bot + Celery task queue
+│   │   ├── src/
+│   │   │   ├── bot.py       # Slack event handlers
+│   │   │   ├── tasks.py     # Celery task definitions
+│   │   │   ├── dog_selector.py  # Dog assignment logic
+│   │   │   └── celery_app.py    # Celery configuration
+│   │   ├── requirements.txt
+│   │   ├── railway.json
+│   │   └── README.md
+│   │
+│   ├── worker/               # Celery worker (Dogs)
+│   │   ├── src/
+│   │   │   ├── worker_tasks.py  # Task implementation
+│   │   │   ├── dog.py           # Aider wrapper
+│   │   │   ├── repo_manager.py  # Git operations
+│   │   │   └── celery_app.py    # Worker configuration
+│   │   ├── requirements.txt
+│   │   ├── railway.json
+│   │   └── README.md
+│   │
+│   ├── shared/               # Common utilities
+│   │   ├── src/
+│   │   │   ├── config.py        # Environment management
+│   │   │   ├── github_client.py # GitHub API wrapper
+│   │   │   └── slack_utils.py   # Message formatting
+│   │   ├── requirements.txt
+│   │   └── README.md
+│   │
+│   └── api/                  # Future HTTP API (placeholder)
+│       ├── src/
+│       │   └── server.py
+│       ├── requirements.txt
+│       └── README.md
+│
+├── docs/
+│   ├── ARCHITECTURE.md       # System design & data flow
+│   ├── DEPLOYMENT.md         # Railway deployment guide
+│   └── AGENTS_APPENDLOG.md   # Audit log of changes
+│
+├── scripts/
+│   ├── setup/
+│   │   └── validate_env.py   # Environment validation
+│   └── tests/
+│       └── test_aider.py     # Aider integration test
+│
+├── workdir/                  # Temp workspace (gitignored)
+├── .env.example              # Environment variable template
+├── requirements.txt          # Root dependencies
+├── Procfile                  # Railway process definitions
+└── README.md                 # This file
 ```
 
 ## Key Implementation Details
