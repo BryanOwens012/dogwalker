@@ -14,6 +14,13 @@ logger = logging.getLogger(__name__)
 class Dog:
     """AI coding agent that uses Aider to make code changes."""
 
+    # Model pricing (per million tokens) as of January 2025
+    MODEL_PRICING = {
+        "claude-sonnet-4-20250514": {"input": 3.00, "output": 15.00},
+        "claude-3-5-sonnet-20241022": {"input": 3.00, "output": 15.00},
+        "claude-3-5-haiku-20241022": {"input": 0.80, "output": 4.00},
+    }
+
     def __init__(
         self,
         repo_path: Path,
@@ -33,13 +40,56 @@ class Dog:
         self.map_tokens = map_tokens
         self.coder: Optional[Coder] = None
 
-    def call_claude_api(self, prompt: str, max_tokens: int = 1000) -> str:
+        # Cost tracking
+        self.total_cost = 0.0
+        self.cost_breakdown = {
+            "pr_title": 0.0,
+            "plan_generation": 0.0,
+            "draft_pr_description": 0.0,
+            "implementation": 0.0,
+            "self_review": 0.0,
+            "testing": 0.0,
+            "critical_review": 0.0,
+            "final_pr_description": 0.0,
+        }
+
+    def _calculate_cost(self, input_tokens: int, output_tokens: int, model_name: str) -> float:
+        """
+        Calculate API cost based on token usage.
+
+        Args:
+            input_tokens: Number of input tokens
+            output_tokens: Number of output tokens
+            model_name: Model name (without provider prefix)
+
+        Returns:
+            Cost in dollars
+        """
+        pricing = self.MODEL_PRICING.get(model_name)
+        if not pricing:
+            logger.warning(f"No pricing data for model {model_name}, using Sonnet 4.5 pricing")
+            pricing = self.MODEL_PRICING["claude-sonnet-4-20250514"]
+
+        input_cost = (input_tokens / 1_000_000) * pricing["input"]
+        output_cost = (output_tokens / 1_000_000) * pricing["output"]
+        total_cost = input_cost + output_cost
+
+        logger.debug(
+            f"Cost calculation: {input_tokens} input + {output_tokens} output tokens = ${total_cost:.4f}"
+        )
+
+        return total_cost
+
+    def call_claude_api(self, prompt: str, max_tokens: int = 1000, category: str = "other") -> str:
         """
         Call Claude API directly for text generation (not code editing).
+
+        Automatically tracks API costs.
 
         Args:
             prompt: The prompt to send to Claude
             max_tokens: Maximum tokens in response
+            category: Cost category for tracking (e.g., "pr_title", "plan_generation")
 
         Returns:
             Claude's response as a string
@@ -62,6 +112,22 @@ class Dog:
                 {"role": "user", "content": prompt}
             ]
         )
+
+        # Track cost
+        cost = self._calculate_cost(
+            input_tokens=response.usage.input_tokens,
+            output_tokens=response.usage.output_tokens,
+            model_name=model_name
+        )
+
+        self.total_cost += cost
+        if category in self.cost_breakdown:
+            self.cost_breakdown[category] += cost
+        else:
+            # For unknown categories, create a new entry
+            self.cost_breakdown[category] = cost
+
+        logger.info(f"API call ({category}): ${cost:.4f} - Total cost: ${self.total_cost:.4f}")
 
         return response.content[0].text
 
@@ -98,7 +164,7 @@ Examples:
 Provide ONLY the title text in your response. No explanation, no quotes, no additional text."""
 
         try:
-            title = self.call_claude_api(title_prompt, max_tokens=100)
+            title = self.call_claude_api(title_prompt, max_tokens=100, category="pr_title")
             # Clean up the response
             title = title.strip().strip('"').strip("'")
             # Truncate if still too long
@@ -151,7 +217,7 @@ CRITICAL RULES:
 Keep the entire plan under 250 words."""
 
         try:
-            plan = self.call_claude_api(plan_prompt, max_tokens=800)
+            plan = self.call_claude_api(plan_prompt, max_tokens=800, category="plan_generation")
             logger.info("Implementation plan generated")
             return plan.strip()
 
@@ -237,6 +303,13 @@ Follow the commit strategy you outlined in the implementation plan.
                 os.chdir(old_cwd)  # Restore working directory
                 return False
 
+            # Track Aider cost (Aider internally tracks total_cost)
+            if hasattr(self.coder, 'total_cost') and self.coder.total_cost:
+                aider_cost = self.coder.total_cost
+                self.total_cost += aider_cost
+                self.cost_breakdown["implementation"] += aider_cost
+                logger.info(f"Aider implementation cost: ${aider_cost:.4f} - Total cost: ${self.total_cost:.4f}")
+
             logger.info("Aider task completed successfully")
             os.chdir(old_cwd)  # Restore working directory
             return True
@@ -301,6 +374,13 @@ IMPORTANT - Commit Strategy:
 
             # Run review
             result = self.coder.run(review_prompt)
+
+            # Track Aider cost
+            if hasattr(self.coder, 'total_cost') and self.coder.total_cost:
+                aider_cost = self.coder.total_cost
+                self.total_cost += aider_cost
+                self.cost_breakdown["self_review"] += aider_cost
+                logger.info(f"Aider self-review cost: ${aider_cost:.4f} - Total cost: ${self.total_cost:.4f}")
 
             logger.info("Self-review completed")
             os.chdir(old_cwd)
@@ -374,6 +454,13 @@ IMPORTANT - Commit Strategy:
 
             # Write and run tests
             result = self.coder.run(test_prompt)
+
+            # Track Aider cost
+            if hasattr(self.coder, 'total_cost') and self.coder.total_cost:
+                aider_cost = self.coder.total_cost
+                self.total_cost += aider_cost
+                self.cost_breakdown["testing"] += aider_cost
+                logger.info(f"Aider testing cost: ${aider_cost:.4f} - Total cost: ${self.total_cost:.4f}")
 
             logger.info("Tests written and validated")
             os.chdir(old_cwd)
@@ -449,7 +536,7 @@ _This PR will be updated with changes and marked ready for review when complete.
 Provide ONLY the markdown PR description. No explanations, no additional text."""
 
         try:
-            return self.call_claude_api(prompt, max_tokens=1500)
+            return self.call_claude_api(prompt, max_tokens=1500, category="draft_pr_description")
         except Exception as e:
             logger.exception(f"Draft PR description generation failed: {e}")
             # Fallback to basic template
@@ -488,6 +575,7 @@ _This PR will be updated with changes and marked ready for review when complete.
         files_modified: list[str],
         critical_review_points: str,
         image_files: Optional[list[str]] = None,
+        cost_report: Optional[dict[str, float]] = None,
     ) -> str:
         """
         Generate final PR description using Claude API.
@@ -501,6 +589,7 @@ _This PR will be updated with changes and marked ready for review when complete.
             files_modified: List of modified file paths
             critical_review_points: Critical areas needing review (or empty string)
             image_files: List of image file paths (optional)
+            cost_report: API cost breakdown (optional, dict with "total_cost" and "breakdown")
 
         Returns:
             Complete final PR description in markdown
@@ -528,6 +617,36 @@ _This PR will be updated with changes and marked ready for review when complete.
 ### ⚠️ Critical Review Areas
 {critical_review_points}
 """ if critical_review_points else ""
+
+        # Format cost section if available
+        cost_section = ""
+        if cost_report:
+            total_cost = cost_report.get("total_cost", 0.0)
+            breakdown = cost_report.get("breakdown", {})
+
+            # Format breakdown
+            breakdown_lines = []
+            for category, cost in breakdown.items():
+                if cost > 0:
+                    # Format category name (convert snake_case to Title Case)
+                    category_name = category.replace("_", " ").title()
+                    breakdown_lines.append(f"  - {category_name}: ${cost:.4f}")
+
+            breakdown_text = "\n".join(breakdown_lines) if breakdown_lines else "  - No breakdown available"
+
+            cost_section = f"""
+
+### 💰 API Cost
+
+**Total Cost:** ${total_cost:.4f}
+
+<details>
+<summary>Cost Breakdown</summary>
+
+{breakdown_text}
+
+</details>
+"""
 
         prompt = f"""Generate a professional GitHub pull request description for completed work.
 
@@ -558,6 +677,7 @@ Format the PR description as professional markdown with these sections:
    - Comprehensive tests written and verified passing
    - All code changes validated before submission
 9. ⏱️ Task Duration section
+10. 💰 API Cost section{cost_section if cost_report else " (SKIP if no cost data provided)"}
 
 End with:
 ---
@@ -568,7 +688,7 @@ Co-Authored-By: Claude <noreply@anthropic.com>
 Provide ONLY the markdown PR description. Be professional and concise."""
 
         try:
-            return self.call_claude_api(prompt, max_tokens=2000)
+            return self.call_claude_api(prompt, max_tokens=2000, category="final_pr_description")
         except Exception as e:
             logger.exception(f"Final PR description generation failed: {e}")
             # Fallback to basic template
@@ -600,11 +720,24 @@ This PR has been:
 
 ### ⏱️ Task Duration
 Completed in **{duration_str}**
+{cost_section}
 
 ---
 🤖 Generated with [Dogwalker AI](https://dogwalker.dev)
 
 Co-Authored-By: Claude <noreply@anthropic.com>"""
+
+    def get_cost_report(self) -> dict[str, float]:
+        """
+        Get a complete cost report for this task.
+
+        Returns:
+            Dictionary with total cost and breakdown by category
+        """
+        return {
+            "total_cost": self.total_cost,
+            "breakdown": self.cost_breakdown.copy()
+        }
 
     def cleanup(self) -> None:
         """Clean up Aider resources."""

@@ -336,12 +336,18 @@ Respond with a bulleted list of SPECIFIC critical areas, or "No critical areas i
 Max 3-5 bullet points."""
 
         try:
-            critical_review_points = dog.call_claude_api(critical_review_prompt, max_tokens=500).strip()
+            critical_review_points = dog.call_claude_api(
+                critical_review_prompt, max_tokens=500, category="critical_review"
+            ).strip()
             if "no critical" in critical_review_points.lower() and len(critical_review_points) < 100:
                 critical_review_points = ""
         except Exception as e:
             logger.error(f"Failed to identify critical review points: {e}")
             critical_review_points = ""
+
+        # Get cost report from dog
+        cost_report = dog.get_cost_report()
+        logger.info(f"Total API cost for task: ${cost_report['total_cost']:.4f}")
 
         # Generate complete final PR description
         final_pr_body = dog.generate_final_pr_description(
@@ -353,6 +359,7 @@ Max 3-5 bullet points."""
             files_modified=modified_files,
             critical_review_points=critical_review_points,
             image_files=image_files if image_files else None,
+            cost_report=cost_report,
         )
 
         github_client.update_pull_request(
