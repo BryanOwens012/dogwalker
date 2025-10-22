@@ -5,7 +5,7 @@ from celery_app import app
 import logging
 import sys
 from pathlib import Path
-from typing import Any
+from typing import Any, List, Dict, Optional
 import os
 
 # Add shared module to path
@@ -57,6 +57,7 @@ def run_coding_task(
     requester_name: str,
     requester_profile_url: str,
     start_time: float,
+    images: Optional[List[Dict[str, str]]] = None,
 ) -> dict[str, Any]:
     """
     Execute a coding task with Aider.
@@ -76,6 +77,7 @@ def run_coding_task(
         requester_name: Display name of person who requested the change
         requester_profile_url: Slack profile URL of the requester
         start_time: Unix timestamp when request was made
+        images: List of images from Slack (dicts with 'filename', 'mimetype', 'data')
 
     Returns:
         Dictionary with task results and metadata
@@ -124,6 +126,33 @@ def run_coding_task(
 
         repo_manager.clone()
         repo_manager.create_branch(branch_name, base_branch=config.base_branch)
+
+        # Step 1.5: Save images to work directory if present
+        image_files = []
+        if images:
+            logger.info(f"Saving {len(images)} image(s) to work directory")
+            images_dir = work_dir / ".dogwalker_images"
+            images_dir.mkdir(exist_ok=True)
+
+            import base64
+            for i, img in enumerate(images):
+                filename = img.get("filename", f"image_{i}")
+                data = img.get("data", "")
+
+                # Decode base64 image data
+                try:
+                    image_bytes = base64.b64decode(data)
+                    image_path = images_dir / filename
+                    image_path.write_bytes(image_bytes)
+                    image_files.append(str(image_path))
+                    logger.info(f"Saved image: {filename} ({len(image_bytes)} bytes)")
+                except Exception as e:
+                    logger.error(f"Failed to save image {filename}: {e}")
+
+            # Commit images so they're available in the PR
+            if image_files:
+                logger.info("Committing images to branch")
+                repo_manager.commit_changes(f"Add reference images ({len(image_files)} image(s))")
 
         # Step 2: Create placeholder commit so PR can be created
         logger.info("Creating placeholder commit for PR creation")
@@ -184,6 +213,7 @@ def run_coding_task(
             requester_name=requester_link,
             request_time_str=request_time_str,
             plan=plan,
+            image_files=image_files if image_files else None,
         )
 
         pr_info = github_client.create_pull_request(
@@ -221,7 +251,7 @@ def run_coding_task(
 
         # Step 7: Run Aider to make code changes
         logger.info(f"Running Aider with task: {task_description}")
-        success = dog.run_task(task_description)
+        success = dog.run_task(task_description, image_files=image_files if image_files else None)
 
         if not success:
             raise ValueError("Aider did not produce code changes")
@@ -293,6 +323,7 @@ Max 3-5 bullet points."""
             plan=plan,
             files_modified=modified_files,
             critical_review_points=critical_review_points,
+            image_files=image_files if image_files else None,
         )
 
         github_client.update_pull_request(

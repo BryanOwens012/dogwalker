@@ -163,12 +163,13 @@ Keep the entire plan under 250 words."""
 - Follow project patterns and conventions
 - Add error handling and validation"""
 
-    def run_task(self, task_description: str) -> bool:
+    def run_task(self, task_description: str, image_files: Optional[list[str]] = None) -> bool:
         """
         Execute a coding task using Aider.
 
         Args:
             task_description: Natural language description of code changes
+            image_files: List of image file paths for context (optional)
 
         Returns:
             True if task completed successfully, False otherwise
@@ -201,10 +202,24 @@ Keep the entire plan under 250 words."""
 
             logger.info(f"Aider initialized with model {self.model_name}")
 
+            # Build context about images if present
+            image_context = ""
+            if image_files:
+                image_paths = [Path(img).relative_to(self.repo_path) for img in image_files if Path(img).exists()]
+                if image_paths:
+                    image_list = "\n".join([f"  - {path}" for path in image_paths])
+                    image_context = f"""
+CONTEXT - Reference Images:
+The following images have been provided as context for this task:
+{image_list}
+
+These images are located in the `.dogwalker_images/` directory and can provide visual guidance for your implementation.
+"""
+
             # Run the task with commit strategy instructions
             implementation_prompt = f"""
 {task_description}
-
+{image_context}
 IMPORTANT - Commit Strategy:
 - Break your work into bite-sized commits
 - Each commit should change AT MOST 500 lines of code (across all files)
@@ -375,6 +390,7 @@ IMPORTANT - Commit Strategy:
         requester_name: str,
         request_time_str: str,
         plan: str,
+        image_files: Optional[list[str]] = None,
     ) -> str:
         """
         Generate a draft PR description using Claude API.
@@ -384,11 +400,26 @@ IMPORTANT - Commit Strategy:
             requester_name: Display name of requester (with optional markdown link)
             request_time_str: Formatted timestamp of request
             plan: Implementation plan
+            image_files: List of image file paths (optional)
 
         Returns:
             Complete PR description in markdown
         """
         logger.info("Generating draft PR description")
+
+        # Convert images to markdown with relative paths
+        image_markdown = ""
+        if image_files:
+            for img_path in image_files:
+                try:
+                    img_path_obj = Path(img_path)
+                    if img_path_obj.exists():
+                        # Use relative path from repo root
+                        relative_path = img_path_obj.relative_to(self.repo_path)
+                        # Use markdown image syntax with relative path
+                        image_markdown += f'\n![{img_path_obj.name}]({relative_path})\n'
+                except Exception as e:
+                    logger.error(f"Failed to process image {img_path}: {e}")
 
         prompt = f"""Generate a GitHub pull request description for a work-in-progress PR.
 
@@ -402,7 +433,7 @@ Context:
 Format the PR description as professional markdown with these sections:
 1. A header: "🐕 Dogwalker AI Task Report"
 2. 👤 Requester section showing who requested this
-3. 📋 Request section with the task description (as a blockquote)
+3. 📋 Request section with the task description (as a blockquote){"   - Include images if provided below the task description" if image_markdown else ""}
 4. 📅 When section showing when it was requested
 5. 🎯 Implementation Plan section with the plan
 
@@ -430,6 +461,8 @@ Provide ONLY the markdown PR description. No explanations, no additional text.""
 ### 📋 Request
 > {task_description}
 
+{image_markdown if image_markdown else ""}
+
 ### 📅 When
 Requested on **{request_time_str}**
 
@@ -454,6 +487,7 @@ _This PR will be updated with changes and marked ready for review when complete.
         plan: str,
         files_modified: list[str],
         critical_review_points: str,
+        image_files: Optional[list[str]] = None,
     ) -> str:
         """
         Generate final PR description using Claude API.
@@ -466,11 +500,26 @@ _This PR will be updated with changes and marked ready for review when complete.
             plan: Implementation plan
             files_modified: List of modified file paths
             critical_review_points: Critical areas needing review (or empty string)
+            image_files: List of image file paths (optional)
 
         Returns:
             Complete final PR description in markdown
         """
         logger.info("Generating final PR description")
+
+        # Convert images to markdown with relative paths
+        image_markdown = ""
+        if image_files:
+            for img_path in image_files:
+                try:
+                    img_path_obj = Path(img_path)
+                    if img_path_obj.exists():
+                        # Use relative path from repo root
+                        relative_path = img_path_obj.relative_to(self.repo_path)
+                        # Use markdown image syntax with relative path
+                        image_markdown += f'\n![{img_path_obj.name}]({relative_path})\n'
+                except Exception as e:
+                    logger.error(f"Failed to process image {img_path}: {e}")
 
         files_list = "\n".join([f"- `{f}`" for f in files_modified]) if files_modified else "_File changes were committed automatically by the AI agent_"
 
@@ -499,7 +548,7 @@ Critical Review Points:
 Format the PR description as professional markdown with these sections:
 1. Header: "🐕 Dogwalker AI Task Report"
 2. 👤 Requester section
-3. 📋 Request section (as blockquote)
+3. 📋 Request section (as blockquote){"   - Include images if provided below the task description" if image_markdown else ""}
 4. 📅 When section
 5. 🎯 Implementation Plan section
 6. 📝 Changes Made section (list the modified files)
@@ -530,6 +579,8 @@ Provide ONLY the markdown PR description. Be professional and concise."""
 
 ### 📋 Request
 > {task_description}
+
+{image_markdown if image_markdown else ""}
 
 ### 📅 When
 Requested on **{request_time_str}**

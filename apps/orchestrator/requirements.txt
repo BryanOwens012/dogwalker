@@ -4,6 +4,7 @@ slack-sdk>=3.23.0
 celery>=5.3.4
 redis>=5.0.1  # For Celery broker and dog task tracking
 python-dotenv>=1.0.0
+requests>=2.31.0  # For downloading images from Slack
 
 # Shared dependencies (install from ../shared)
 PyGithub>=2.1.1
