@@ -259,7 +259,7 @@ Respond with a bulleted list of SPECIFIC critical areas, or "No critical areas i
 Max 3-5 bullet points."""
 
         try:
-            critical_review_points = dog._call_claude_api(critical_review_prompt, max_tokens=500).strip()
+            critical_review_points = dog.call_claude_api(critical_review_prompt, max_tokens=500).strip()
             if "no critical" in critical_review_points.lower() and len(critical_review_points) < 100:
                 critical_review_points = ""
         except Exception as e:

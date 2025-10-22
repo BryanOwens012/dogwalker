@@ -3,10 +3,43 @@
 ## Project Overview
 Dogwalker is an autonomous coding system that reads customer feature requests from Slack and automates code generation all the way to PR-ready state. The system uses multiple AI "dogs" (agents) orchestrated by a "Dogwalker" (PM/coordinator) to handle coding tasks in parallel.
 
-**Domain:** dogwalker.dev (purchased)  
-**Current Status:** Pre-MVP, closed-source  
-**Timeline:** 3-4 weeks to working MVP  
+**Domain:** dogwalker.dev (purchased)
+**Current Status:** Pre-MVP, closed-source
+**Timeline:** 3-4 weeks to working MVP
 **Decision Point:** Month 3-4 - evaluate open-sourcing vs. staying closed based on traction
+
+## How It Works
+
+Dogwalker automates the entire software development workflow from task description to production-ready pull request:
+
+1. **Request** - You mention `@dogwalker` in Slack with a task description
+   - Example: `@dogwalker add rate limiting to the login endpoint`
+
+2. **Planning** - AI generates an implementation plan
+   - Creates a date-prefixed branch (`bryans-coregi/2025-10-21-add-rate-limiting`)
+   - Generates concise PR title and structured plan
+   - Posts draft PR to GitHub with the plan for early human review
+
+3. **Implementation** - AI writes the code using Aider + Claude Sonnet 4.5
+   - Explores codebase and identifies relevant files
+   - Makes code changes with bite-sized commits (≤500 LOC each)
+   - Follows project patterns and coding standards
+
+4. **Quality Assurance** - Three-phase review process
+   - **Self-review**: AI critiques its own work and makes improvements
+   - **Testing**: Writes comprehensive tests and verifies they pass
+   - **Validation**: Ensures all changes work as expected
+
+5. **Delivery** - PR ready for human review
+   - Updates PR with complete details (duration, files changed, critical review areas)
+   - Marks PR as ready for review in GitHub
+   - Posts completion message to Slack thread
+
+**Total time:** 4-10 minutes for simple tasks
+**Cost:** ~$0.75-$5.00 per task (API usage)
+**Result:** Production-ready PR with tests, ready to merge
+
+All updates post to the Slack thread for visibility, so you can track progress without leaving Slack.
 
 ## Architecture
 

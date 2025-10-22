@@ -33,7 +33,7 @@ class Dog:
         self.map_tokens = map_tokens
         self.coder: Optional[Coder] = None
 
-    def _call_claude_api(self, prompt: str, max_tokens: int = 1000) -> str:
+    def call_claude_api(self, prompt: str, max_tokens: int = 1000) -> str:
         """
         Call Claude API directly for text generation (not code editing).
 
@@ -98,7 +98,7 @@ Examples:
 Provide ONLY the title text in your response. No explanation, no quotes, no additional text."""
 
         try:
-            title = self._call_claude_api(title_prompt, max_tokens=100)
+            title = self.call_claude_api(title_prompt, max_tokens=100)
             # Clean up the response
             title = title.strip().strip('"').strip("'")
             # Truncate if still too long
@@ -151,7 +151,7 @@ CRITICAL RULES:
 Keep the entire plan under 250 words."""
 
         try:
-            plan = self._call_claude_api(plan_prompt, max_tokens=800)
+            plan = self.call_claude_api(plan_prompt, max_tokens=800)
             logger.info("Implementation plan generated")
             return plan.strip()
 
@@ -418,7 +418,7 @@ _This PR will be updated with changes and marked ready for review when complete.
 Provide ONLY the markdown PR description. No explanations, no additional text."""
 
         try:
-            return self._call_claude_api(prompt, max_tokens=1500)
+            return self.call_claude_api(prompt, max_tokens=1500)
         except Exception as e:
             logger.exception(f"Draft PR description generation failed: {e}")
             # Fallback to basic template
@@ -519,7 +519,7 @@ Co-Authored-By: Claude <noreply@anthropic.com>
 Provide ONLY the markdown PR description. Be professional and concise."""
 
         try:
-            return self._call_claude_api(prompt, max_tokens=2000)
+            return self.call_claude_api(prompt, max_tokens=2000)
         except Exception as e:
             logger.exception(f"Final PR description generation failed: {e}")
             # Fallback to basic template

@@ -18,6 +18,7 @@ class GitHubClient:
             token: GitHub personal access token
             repo_name: Repository name (format: owner/repo)
         """
+        self.token = token
         self.github = Github(token)
         self.repo_name = repo_name
         self._repo = None
@@ -174,7 +175,7 @@ class GitHubClient:
 
             if pr_node_id:
                 # Execute GraphQL mutation
-                headers = {"Authorization": f"token {self.github._Github__requester.auth.token}"}
+                headers = {"Authorization": f"token {self.token}"}
                 import requests
                 response = requests.post(
                     "https://api.github.com/graphql",

@@ -420,11 +420,14 @@ Monitor services in Railway dashboard:
 
 ### Slack Monitoring
 
-All task updates post to Slack threads with 3 key messages:
+All task updates post to Slack threads. You'll see 3 messages for successful tasks (or 4 if errors occur):
+
 1. **Task Started**: "🐕 Coregi is taking this task!"
 2. **Draft PR Created**: "📋 Coregi created a draft PR with the plan [link + preview]"
 3. **Task Completed**: "✅ Work complete! PR ready for review [link]"
-4. **Task Failed** (if errors occur): "❌ Task failed: [error]"
+
+If errors occur, you'll see instead:
+- **Task Failed**: "❌ Task failed: [error]"
 
 Each message appears in the same Slack thread for easy tracking.
 

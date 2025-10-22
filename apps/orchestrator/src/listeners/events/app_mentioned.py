@@ -95,7 +95,6 @@ def handle_app_mention(event: dict, say: Say, client: WebClient, logger: Logger)
         user_id = event.get("user")
         channel_id = event.get("channel")
         thread_ts = event.get("ts")  # Use event timestamp for threading
-        event_ts = event.get("event_ts", thread_ts)  # When event actually occurred
 
         # Record start time for accurate duration tracking
         start_time = time.time()
