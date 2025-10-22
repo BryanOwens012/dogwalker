@@ -8,9 +8,13 @@ The worker is the AI coding agent (dog) that executes tasks using Aider.
 AI coding agent that uses Aider to make code changes.
 
 **Features:**
-- Initializes Aider with Claude Sonnet 4.5
+- Initializes Aider with Claude Sonnet 4
 - Auto-detects relevant files using repo map
-- Executes natural language coding tasks
+- Executes natural language coding tasks in multiple phases:
+  - **Plan generation**: Analyzes codebase and creates implementation plan
+  - **Implementation**: Makes code changes based on task
+  - **Self-review**: Critiques and improves code quality
+  - **Test writing**: Writes comprehensive tests and verifies they pass
 - Verifies changes were made
 
 ### `repo_manager.py`
@@ -27,11 +31,17 @@ Celery task implementation - actual execution logic.
 
 **Workflow:**
 1. Clone repository
-2. Create feature branch
-3. Run Aider to make code changes
-4. Commit and push changes
-5. Create pull request
-6. Post PR link to Slack thread
+2. Create feature branch (descriptive name with dog prefix)
+3. Generate implementation plan with Aider
+4. Push empty branch and create draft PR with plan
+5. Post draft PR announcement to Slack with plan preview
+6. Run Aider to implement code changes
+7. Run self-review phase for quality improvements
+8. Write comprehensive tests and verify they pass
+9. Commit and push all changes
+10. Update PR description with complete details
+11. Mark PR as "Ready for Review" (exit draft state)
+12. Post completion announcement to Slack
 
 ### `celery_app.py`
 Celery worker configuration.
@@ -77,24 +87,32 @@ This app deploys as a worker service that processes Celery tasks.
 
 ## How It Works
 
-1. Orchestrator creates task in Redis queue
+1. Orchestrator creates task in Redis queue with full metadata
 2. Worker picks up task from queue
 3. Worker clones repo to ephemeral `workdir/`
-4. Worker runs Aider with task description
-5. Aider edits code using Claude Sonnet 4.5
-6. Worker commits, pushes, and creates PR
-7. Worker posts PR link to Slack
-8. Worker cleans up work directory
+4. Worker generates implementation plan using Aider
+5. Worker creates draft PR with plan (early visibility)
+6. Worker posts draft PR to Slack with plan preview
+7. Aider implements code changes using Claude Sonnet 4
+8. Aider runs self-review and makes improvements
+9. Aider writes comprehensive tests and verifies they pass
+10. Worker pushes all changes
+11. Worker updates PR with complete description
+12. Worker marks PR as "Ready for Review"
+13. Worker posts completion to Slack
+14. Worker cleans up work directory
 
 ## Configuration
 
 ### Model Selection
-Default: `claude-sonnet-4.5-20250929` (best for complex tasks)
+Default: `anthropic/claude-sonnet-4-20250514` (best for complex tasks)
 
 To use a different model, modify `dog.py`:
 ```python
-dog = Dog(repo_path=work_dir, model_name="claude-haiku-3.5")
+dog = Dog(repo_path=work_dir, model_name="anthropic/claude-haiku-3.5")
 ```
+
+Note: Model names must include the provider prefix when using Aider.
 
 ### Repo Map Tokens
 Default: 1024 tokens (good for most projects)
