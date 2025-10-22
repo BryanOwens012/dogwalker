@@ -74,7 +74,13 @@ cd apps/orchestrator
 python src/bot.py
 ```
 
-You should see: "Starting Dogwalker Slack bot..."
+You should see:
+```
+Configuration loaded successfully
+Slack bot initialized successfully
+Starting Dogwalker Slack bot...
+Connected to Slack! Bot is ready to receive events.
+```
 
 ### 4. Start Worker (Celery)
 
@@ -95,6 +101,24 @@ You should see: "celery@hostname ready."
    @dogwalker hello world
    ```
 3. You should see: "🐕 Bryans-Coregi is taking this task!"
+
+## Architecture Notes
+
+The orchestrator (`apps/orchestrator`) uses a **modular listener pattern** inspired by [bolt-python-assistant-template](https://github.com/slack-samples/bolt-python-assistant-template):
+
+- **Clean entry point**: `bot.py` handles initialization and startup
+- **Modular event handlers**: Each event type has its own file in `listeners/events/`
+- **Easy extensibility**: Add new listeners without modifying core bot code
+- **Type-safe**: Proper type hints on all handler functions
+
+**Key files:**
+- `src/bot.py` - Main entry point
+- `src/listeners/__init__.py` - Registers all listeners with the Slack app
+- `src/listeners/events/app_mentioned.py` - Handles @dogwalker mentions
+- `src/dog_selector.py` - Selects which dog handles each task
+- `src/tasks.py` - Celery task definitions (contract)
+
+This pattern makes it easy to add new event handlers (reactions, buttons, etc.) without touching the core bot logic.
 
 ## Setting Up Slack App
 
@@ -128,7 +152,6 @@ Go to "OAuth & Permissions" and add these scopes:
 2. Enable Events
 3. Subscribe to bot events:
    - `app_mention` - When someone @mentions the bot
-   - `message.channels` - Messages in channels (optional)
 
 ### 5. Install App to Workspace
 
@@ -234,9 +257,13 @@ Check logs for each service:
 
 **Orchestrator logs should show:**
 ```
+Configuration loaded successfully
+Slack bot initialized successfully
 Starting Dogwalker Slack bot...
-Connected to Slack
+Connected to Slack! Bot is ready to receive events.
 ```
+
+The orchestrator uses a modular listener pattern where event handlers are organized in `listeners/events/` directory.
 
 **Worker logs should show:**
 ```
