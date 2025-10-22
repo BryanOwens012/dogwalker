@@ -84,10 +84,17 @@ Uses modular listener pattern (inspired by [bolt-python-assistant-template](http
 **Responsibilities:**
 1. Listen for `@dogwalker` mentions via Slack Socket Mode
 2. Parse task description from message
-3. Select least-busy dog (MVP: round-robin)
-4. Create Celery task with task metadata
-5. Post immediate acknowledgment to Slack
-6. Store task ID for status tracking
+3. Select least-busy dog using Redis-based load balancing
+4. Mark selected dog as busy with task ID
+5. Create Celery task with task metadata
+6. Post immediate acknowledgment to Slack
+7. Store task ID for status tracking
+
+**Load Balancing:**
+- Tracks active tasks per dog in Redis (`dogwalker:active_tasks:{dog_name}`)
+- Uses least-busy algorithm: selects dog with fewest active tasks
+- Falls back to round-robin if Redis unavailable
+- Automatically marks dogs free when tasks complete or fail
 
 ### Worker (apps/worker)
 
@@ -290,17 +297,17 @@ Code errors, validation failures, Aider failures → Fail immediately
 
 ## Scalability
 
-### Current (MVP)
-- Single dog worker
-- Sequential task processing
-- Single Redis instance
-- ~10 tasks/day capacity
+### Current (Implemented)
+- 1-N dog workers (configurable via DOGS env var)
+- Parallel task processing with load balancing
+- Single Redis instance for queue + task tracking
+- ~10-30 tasks/day capacity (depends on dog count)
 
 ### Near-term (Month 2-3)
-- 3-5 dog workers
-- Parallel task processing
+- Auto-scaling workers based on queue depth
 - Dog specialization (frontend/backend)
-- ~50 tasks/day capacity
+- Priority queues for urgent tasks
+- ~50-100 tasks/day capacity
 
 ### Long-term (Month 6+)
 - Auto-scaling workers
@@ -363,12 +370,14 @@ Code errors, validation failures, Aider failures → Fail immediately
 
 **Cost:** ~$20-40/month (3 services + Redis)
 
-## Future Enhancements
+## Implemented Enhancements
 
-### Multi-Dog Coordination
-- Track active tasks per dog
-- Assign to least busy dog
-- Dog specialization (frontend, backend, tests, docs)
+### Multi-Dog Coordination ✅
+- ✅ Track active tasks per dog in Redis
+- ✅ Assign to least busy dog (load balancing)
+- ⏳ Dog specialization (frontend, backend, tests, docs) - Future
+
+## Future Enhancements
 
 ### Human-in-the-Loop
 - Dogs can ask clarifying questions

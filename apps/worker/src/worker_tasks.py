@@ -10,6 +10,8 @@ import os
 
 # Add shared module to path
 sys.path.insert(0, str(Path(__file__).parent.parent.parent / "shared" / "src"))
+# Add orchestrator module to path (for dog_selector)
+sys.path.insert(0, str(Path(__file__).parent.parent.parent / "orchestrator" / "src"))
 
 from config import config
 from github_client import GitHubClient
@@ -20,8 +22,12 @@ from slack_utils import (
 )
 from repo_manager import RepoManager
 from dog import Dog
+from dog_selector import DogSelector
 
 logger = logging.getLogger(__name__)
+
+# Initialize dog selector for marking tasks complete
+dog_selector = DogSelector()
 
 # Configure logging
 logging.basicConfig(
@@ -86,9 +92,21 @@ def run_coding_task(
         slack_app = App(token=config.slack_bot_token)
         slack_client = slack_app.client
 
-        # Initialize GitHub client
+        # Get dog-specific GitHub token from config
+        dog_info = None
+        for dog in config.dogs:
+            if dog["name"] == dog_name:
+                dog_info = dog
+                break
+
+        if not dog_info:
+            raise ValueError(f"Dog {dog_name} not found in config")
+
+        dog_github_token = dog_info["github_token"]
+
+        # Initialize GitHub client with dog-specific token
         github_client = GitHubClient(
-            token=config.github_token,
+            token=dog_github_token,
             repo_name=config.github_repo
         )
 
@@ -101,7 +119,7 @@ def run_coding_task(
             work_dir=work_dir,
             dog_name=dog_name,
             dog_email=dog_email,
-            github_token=config.github_token
+            github_token=dog_github_token  # Use dog-specific token
         )
 
         repo_manager.clone()
@@ -301,6 +319,9 @@ Max 3-5 bullet points."""
 
         logger.info(f"Task {task_id} completed successfully")
 
+        # Mark dog as free (for load balancing)
+        dog_selector.mark_dog_free(dog_name, task_id)
+
         return {
             "status": "success",
             "task_id": task_id,
@@ -322,6 +343,9 @@ Max 3-5 bullet points."""
                 )
             except Exception as e:
                 logger.error(f"Failed to post error to Slack: {e}")
+
+        # Mark dog as free even on failure (for load balancing)
+        dog_selector.mark_dog_free(dog_name, task_id)
 
         # Retry transient errors (network, git, etc.)
         if isinstance(exc, (IOError, OSError, ConnectionError)):

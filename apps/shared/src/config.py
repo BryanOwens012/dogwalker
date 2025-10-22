@@ -1,8 +1,9 @@
 """Configuration management for Dogwalker."""
 
 import os
+import json
 from pathlib import Path
-from typing import Optional
+from typing import Optional, List
 from dotenv import load_dotenv
 
 
@@ -34,7 +35,7 @@ class Config:
         """Validate all required environment variables are set."""
         required_vars = [
             "ANTHROPIC_API_KEY",
-            "GITHUB_TOKEN",
+            # GITHUB_TOKEN is optional (falls back to first dog's token)
             "SLACK_BOT_TOKEN",
             "SLACK_APP_TOKEN",
             "REDIS_URL",
@@ -55,8 +56,22 @@ class Config:
 
     @property
     def github_token(self) -> str:
-        """Get GitHub personal access token."""
-        return os.getenv("GITHUB_TOKEN", "")
+        """
+        Get GitHub personal access token.
+
+        Falls back to first dog's token if GITHUB_TOKEN not set.
+        This is used by orchestrator for read-only operations (checking branches).
+        """
+        token = os.getenv("GITHUB_TOKEN")
+        if token:
+            return token
+
+        # Fallback: use first dog's token
+        dogs = self.dogs
+        if dogs and len(dogs) > 0:
+            return dogs[0]["github_token"]
+
+        return ""
 
     @property
     def slack_bot_token(self) -> str:
@@ -84,14 +99,79 @@ class Config:
         return os.getenv("SLACK_CHANNEL_ID")
 
     @property
+    def dogs(self) -> List[dict]:
+        """
+        Get list of available dog configurations.
+
+        Returns list of dogs from DOGS env var (JSON array).
+        Falls back to DOG_NAME/DOG_EMAIL for backward compatibility.
+
+        Returns:
+            List of dicts with 'name' and 'email' keys
+
+        Raises:
+            ValueError: If no dogs are configured or JSON is invalid
+        """
+        dogs_json = os.getenv("DOGS")
+
+        if dogs_json:
+            # Parse DOGS JSON array
+            try:
+                dogs_list = json.loads(dogs_json)
+
+                # Validate format
+                if not isinstance(dogs_list, list):
+                    raise ValueError("DOGS must be a JSON array")
+
+                if len(dogs_list) == 0:
+                    raise ValueError("DOGS array cannot be empty")
+
+                # Validate each dog has name, email, and github_token
+                for i, dog in enumerate(dogs_list):
+                    if not isinstance(dog, dict):
+                        raise ValueError(f"Dog {i} must be a dictionary")
+                    if "name" not in dog or "email" not in dog or "github_token" not in dog:
+                        raise ValueError(f"Dog {i} must have 'name', 'email', and 'github_token' keys")
+                    if not dog["name"] or not dog["email"] or not dog["github_token"]:
+                        raise ValueError(f"Dog {i} name, email, and github_token cannot be empty")
+
+                return dogs_list
+
+            except json.JSONDecodeError as e:
+                raise ValueError(f"DOGS env var is not valid JSON: {e}")
+
+        # Backward compatibility: Fall back to DOG_NAME/DOG_EMAIL/DOG_GITHUB_TOKEN
+        dog_name = os.getenv("DOG_NAME")
+        dog_email = os.getenv("DOG_EMAIL")
+        dog_github_token = os.getenv("DOG_GITHUB_TOKEN")
+
+        if dog_name and dog_email and dog_github_token:
+            return [{"name": dog_name, "email": dog_email, "github_token": dog_github_token}]
+
+        # No dogs configured at all
+        raise ValueError(
+            "No dogs configured. Please set either:\n"
+            "  - DOGS environment variable (JSON array with name, email, github_token), or\n"
+            "  - DOG_NAME, DOG_EMAIL, and DOG_GITHUB_TOKEN for backward compatibility"
+        )
+
+    @property
     def dog_name(self) -> str:
-        """Get dog identity name."""
-        return os.getenv("DOG_NAME", "Bryans-Coregi")
+        """
+        Get dog identity name (legacy, for backward compatibility).
+
+        Returns the first dog's name from the dogs list.
+        """
+        return self.dogs[0]["name"]
 
     @property
     def dog_email(self) -> str:
-        """Get dog email for git commits."""
-        return os.getenv("DOG_EMAIL", "coregi@bryanowens.dev")
+        """
+        Get dog email for git commits (legacy, for backward compatibility).
+
+        Returns the first dog's email from the dogs list.
+        """
+        return self.dogs[0]["email"]
 
     @property
     def base_branch(self) -> str:

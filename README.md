@@ -66,10 +66,11 @@ All updates post to the Slack thread for visibility, so you can track progress w
 
 ### Named Agents
 - **Dogwalker Account:** Bryans-Dogwalker (orchestrator)
-- **Dog Accounts:** 
+- **Dog Accounts** (configurable via DOGS env var):
   - Bryans-Coregi (coregi@bryanowens.dev)
   - Bryans-Bitbull (bitbull@bryanowens.dev)
-  - (More dogs can be added later)
+  - Bryans-Poodle (poodle@bryanowens.dev)
+  - (Add more dogs as needed for parallel processing)
 
 ## Tech Stack
 
@@ -282,8 +283,11 @@ def run_coding_task(self, task_id, task_description, branch_name, dog_name, dog_
 ```
 
 ### Dog Selection
-Simple approach (MVP): Round-robin or random selection  
-Better approach: Track active tasks per dog, assign to least busy
+**Current Implementation:** Least-busy load balancing
+- Tracks active tasks per dog in Redis
+- Assigns tasks to dog with fewest active tasks
+- Enables parallel processing with multiple dogs
+- Falls back to round-robin if Redis unavailable
 
 ### Error Handling
 - Retry transient errors (git push failures)
@@ -296,18 +300,29 @@ Better approach: Track active tasks per dog, assign to least busy
 ```bash
 # API Keys
 ANTHROPIC_API_KEY=sk-ant-...
-GITHUB_TOKEN=ghp_...           # For Bryans-Dogwalker account
 SLACK_BOT_TOKEN=xoxb-...
 SLACK_APP_TOKEN=xapp-...
 
 # Configuration
 GITHUB_REPO=username/reponame
-SLACK_CHANNEL_ID=C123456
 REDIS_URL=redis://localhost:6379
 
-# Dog Identity (per worker)
-DOG_NAME=Bryans-Coregi
-DOG_EMAIL=coregi@bryanowens.dev
+# Dog Configuration (Multiple Dogs - JSON array)
+# Each dog needs a unique GitHub account and personal access token
+DOGS='[
+  {"name": "Bryans-Coregi", "email": "coregi@bryanowens.dev", "github_token": "github_pat_11AAA..."},
+  {"name": "Bryans-Bitbull", "email": "bitbull@bryanowens.dev", "github_token": "github_pat_11BBB..."},
+  {"name": "Bryans-Poodle", "email": "poodle@bryanowens.dev", "github_token": "github_pat_11CCC..."}
+]'
+
+# Optional: Separate GitHub token for orchestrator (read-only)
+# If not provided, uses first dog's token as fallback
+# GITHUB_TOKEN=github_pat_...
+
+# Legacy: Single Dog (deprecated - use DOGS instead)
+# DOG_NAME=Bryans-Coregi
+# DOG_EMAIL=coregi@bryanowens.dev
+# DOG_GITHUB_TOKEN=github_pat_...
 ```
 
 ## MVP Scope (Weeks 1-3)
@@ -332,12 +347,16 @@ DOG_EMAIL=coregi@bryanowens.dev
 - First external beta tester
 - Cost tracking per task
 
+## Features Implemented
+- ✅ **Multiple dogs** - Configure 1-N dogs via DOGS env var
+- ✅ **Load balancing** - Least-busy algorithm distributes tasks evenly
+- ✅ **Parallel processing** - Multiple dogs work simultaneously
+
 ## Features to Skip Initially
-- Multiple dogs (start with one)
 - AI code review (human review only)
 - Model routing (use Sonnet 4.5 for everything)
 - Multi-repo support (single repo only)
-- Advanced dog selection algorithms
+- Dog specialization (frontend/backend/tests)
 
 ## Longer-Term Vision
 

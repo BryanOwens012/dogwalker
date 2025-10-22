@@ -17,8 +17,7 @@ Create a `.env` file (see `.env.example`) with these values:
 # Anthropic API (required)
 ANTHROPIC_API_KEY=sk-ant-...
 
-# GitHub (required)
-GITHUB_TOKEN=ghp_...              # From https://github.com/settings/tokens
+# GitHub Repository (required)
 GITHUB_REPO=owner/reponame        # e.g., "bryans-org/my-app"
 
 # Slack (required)
@@ -28,9 +27,24 @@ SLACK_APP_TOKEN=xapp-...          # For Socket Mode
 # Redis (Railway provides this automatically)
 REDIS_URL=redis://localhost:6379  # Local only, Railway auto-sets
 
-# Dog Identity (optional, has defaults)
-DOG_NAME=Bryans-Coregi
-DOG_EMAIL=coregi@bryanowens.dev
+# Dog Configuration (REQUIRED - Multiple Dogs with per-dog GitHub tokens)
+# Each dog needs a unique GitHub account and personal access token
+DOGS='[
+  {"name": "Bryans-Coregi", "email": "coregi@bryanowens.dev", "github_token": "github_pat_11AAA..."},
+  {"name": "Bryans-Bitbull", "email": "bitbull@bryanowens.dev", "github_token": "github_pat_11BBB..."},
+  {"name": "Bryans-Poodle", "email": "poodle@bryanowens.dev", "github_token": "github_pat_11CCC..."}
+]'
+
+# GitHub Token (OPTIONAL - for orchestrator read-only operations)
+# If not provided, will use first dog's token as fallback
+# GITHUB_TOKEN=github_pat_...
+
+# Legacy: Single Dog (deprecated - use DOGS instead)
+# DOG_NAME=Bryans-Coregi
+# DOG_EMAIL=coregi@bryanowens.dev
+# DOG_GITHUB_TOKEN=github_pat_...
+
+# Base Branch (optional, defaults to main)
 BASE_BRANCH=main
 ```
 
@@ -477,16 +491,27 @@ Now you have 2 workers processing tasks in parallel!
 
 ### Add More Dogs
 
-Update `apps/orchestrator/src/dog_selector.py`:
+Update `DOGS` environment variable in Railway:
 
-```python
-self.available_dogs = [
-    {"name": "Bryans-Coregi", "email": "coregi@bryanowens.dev"},
-    {"name": "Bryans-Bitbull", "email": "bitbull@bryanowens.dev"},
+```json
+[
+  {"name": "Bryans-Coregi", "email": "coregi@bryanowens.dev", "github_token": "github_pat_11AAA..."},
+  {"name": "Bryans-Bitbull", "email": "bitbull@bryanowens.dev", "github_token": "github_pat_11BBB..."},
+  {"name": "Bryans-Poodle", "email": "poodle@bryanowens.dev", "github_token": "github_pat_11CCC..."}
 ]
 ```
 
-Redeploy orchestrator.
+**Steps:**
+1. Create GitHub accounts for each new dog
+2. Generate fine-grained GitHub PAT for each dog with:
+   - Contents: Read and write
+   - Pull requests: Read and write
+   - Metadata: Read-only
+3. Add each dog as collaborator to target repo
+4. Update `DOGS` env var in Railway (both orchestrator and worker)
+5. Redeploy both orchestrator and worker services
+
+The system will automatically load balance tasks across all configured dogs using least-busy algorithm.
 
 ## Security Best Practices
 

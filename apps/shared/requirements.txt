@@ -3,3 +3,4 @@ python-dotenv>=1.0.0
 PyGithub>=2.1.1
 pytz>=2024.1
 requests>=2.31.0
+redis>=5.0.0
