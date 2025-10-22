@@ -8,6 +8,9 @@ from slack_sdk import WebClient
 import re
 import time
 from datetime import datetime
+import base64
+import requests
+from typing import List, Dict, Optional
 
 # Add shared and orchestrator modules to path
 sys.path.insert(0, str(Path(__file__).parent.parent.parent.parent.parent / "shared" / "src"))
@@ -75,6 +78,64 @@ def generate_branch_name(
         suffix += 1
 
     return branch_name
+
+
+def download_slack_images(
+    files: List[Dict],
+    slack_token: str,
+    logger: Logger
+) -> List[Dict[str, str]]:
+    """
+    Download images from Slack files array.
+
+    Args:
+        files: List of file objects from Slack event
+        slack_token: Slack bot token for authentication
+        logger: Logger instance for error tracking
+
+    Returns:
+        List of dicts with 'filename', 'mimetype', and 'data' (base64 encoded)
+    """
+    images = []
+
+    for file in files:
+        mimetype = file.get("mimetype", "")
+
+        # Only process image files
+        if not mimetype.startswith("image/"):
+            logger.debug(f"Skipping non-image file: {file.get('name', 'unknown')} ({mimetype})")
+            continue
+
+        url_private = file.get("url_private")
+        if not url_private:
+            logger.warning(f"No url_private for file: {file.get('name', 'unknown')}")
+            continue
+
+        try:
+            # Download file with authentication
+            response = requests.get(
+                url_private,
+                headers={"Authorization": f"Bearer {slack_token}"},
+                timeout=30
+            )
+            response.raise_for_status()
+
+            # Encode as base64 for serialization
+            image_data = base64.b64encode(response.content).decode('utf-8')
+
+            images.append({
+                "filename": file.get("name", "image"),
+                "mimetype": mimetype,
+                "data": image_data
+            })
+
+            logger.info(f"Downloaded image: {file.get('name')} ({len(response.content)} bytes)")
+
+        except requests.RequestException as e:
+            logger.error(f"Failed to download image {file.get('name', 'unknown')}: {e}")
+            continue
+
+    return images
 
 
 def handle_app_mention(event: dict, say: Say, client: WebClient, logger: Logger) -> None:
@@ -179,6 +240,15 @@ def handle_app_mention(event: dict, say: Say, client: WebClient, logger: Logger)
         # Create task ID
         task_id = f"{channel_id}_{thread_ts}"
 
+        # Download images if present in the message
+        images = []
+        files = event.get("files", [])
+        if files:
+            logger.info(f"Detected {len(files)} file(s) in message, checking for images...")
+            images = download_slack_images(files, config.slack_bot_token, logger)
+            if images:
+                logger.info(f"Downloaded {len(images)} image(s) from Slack")
+
         # Mark dog as busy with this task (for load balancing)
         dog_selector.mark_dog_busy(dog_name, task_id)
 
@@ -203,6 +273,7 @@ def handle_app_mention(event: dict, say: Say, client: WebClient, logger: Logger)
             requester_name=requester_name,
             requester_profile_url=requester_profile_url,
             start_time=start_time,
+            images=images,
         )
 
         logger.info(f"Task {task_id} queued with Celery task ID: {result.id}")

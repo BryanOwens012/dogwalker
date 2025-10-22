@@ -5,7 +5,7 @@ from celery_app import app
 import logging
 import sys
 from pathlib import Path
-from typing import Any
+from typing import Any, List, Dict
 
 # Add shared module to path
 sys.path.insert(0, str(Path(__file__).parent.parent.parent / "shared" / "src"))
@@ -35,6 +35,7 @@ def run_coding_task(
     requester_name: str,
     requester_profile_url: str,
     start_time: float,
+    images: List[Dict[str, str]] = None,
 ) -> dict[str, Any]:
     """
     Execute a coding task with a dog agent.
@@ -59,6 +60,7 @@ def run_coding_task(
         requester_name: Display name of person who requested the change
         requester_profile_url: Slack profile URL of the requester
         start_time: Unix timestamp when request was made
+        images: List of images from Slack (dicts with 'filename', 'mimetype', 'data')
 
     Returns:
         Dictionary with task results and metadata

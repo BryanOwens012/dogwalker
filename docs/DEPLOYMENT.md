@@ -154,6 +154,7 @@ Go to "OAuth & Permissions" and add these scopes:
 - `groups:history` - Read private channel messages
 - `users:read` - Read user display names and profile info
 - `team:read` - Read workspace info (for profile URLs)
+- `files:read` - Download images and files attached to messages
 
 ### 3. Enable Socket Mode
 
