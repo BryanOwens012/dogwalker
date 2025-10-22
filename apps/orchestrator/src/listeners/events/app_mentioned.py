@@ -253,8 +253,9 @@ def handle_app_mention(event: dict, say: Say, client: WebClient, logger: Logger)
         dog_selector.mark_dog_busy(dog_name, task_id)
 
         # Acknowledge immediately (Slack requires response within 3 seconds)
+        message = format_task_started(dog_display_name, task_description, task_id)
         say(
-            text=format_task_started(dog_display_name, task_description),
+            **message,
             thread_ts=thread_ts,
         )
 

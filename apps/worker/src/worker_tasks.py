@@ -19,15 +19,20 @@ from slack_utils import (
     format_task_completed,
     format_task_failed,
     format_draft_pr_created,
+    format_task_cancelled,
 )
 from repo_manager import RepoManager
 from dog import Dog
 from dog_selector import DogSelector
+from cancellation import CancellationManager, TaskCancelled
 
 logger = logging.getLogger(__name__)
 
 # Initialize dog selector for marking tasks complete
 dog_selector = DogSelector()
+
+# Initialize cancellation manager for checking task cancellation
+cancellation_manager = CancellationManager(config.redis_url)
 
 # Configure logging
 logging.basicConfig(
@@ -87,6 +92,18 @@ def run_coding_task(
     work_dir = Path(__file__).parent.parent.parent.parent / "workdir" / task_id
     slack_client = None
     pr_info = None
+    current_phase = "initialization"  # Track which phase we're in for cancellation
+
+    def check_cancellation(phase: str) -> None:
+        """Check if task has been cancelled and raise exception if so."""
+        nonlocal current_phase
+        current_phase = phase
+
+        if cancellation_manager.is_cancelled(task_id):
+            cancel_info = cancellation_manager.get_cancellation_info(task_id)
+            cancelled_by = cancel_info.get("cancelled_by", "Unknown User") if cancel_info else "Unknown User"
+            logger.info(f"Task {task_id} cancelled by {cancelled_by} during {phase}")
+            raise TaskCancelled(cancelled_by=cancelled_by, phase=phase)
 
     try:
         # Initialize Slack client (for posting updates)
@@ -163,6 +180,9 @@ def run_coding_task(
         # Step 3: Push branch with placeholder commit
         logger.info("Pushing branch to enable PR creation")
         repo_manager.push_branch(branch_name)
+
+        # Checkpoint: Before planning phase
+        check_cancellation("initialization")
 
         # Step 4: Initialize Dog and generate PR title and implementation plan
         logger.info("Initializing AI agent (Dog)")
@@ -249,6 +269,9 @@ def run_coding_task(
             )
         )
 
+        # Checkpoint: Before implementation phase
+        check_cancellation("planning")
+
         # Step 7: Run Aider to make code changes
         logger.info(f"Running Aider with task: {task_description}")
         success = dog.run_task(task_description, image_files=image_files if image_files else None)
@@ -256,9 +279,15 @@ def run_coding_task(
         if not success:
             raise ValueError("Aider did not produce code changes")
 
+        # Checkpoint: Before self-review phase
+        check_cancellation("implementation")
+
         # Step 8: Run self-review
         logger.info("Running self-review on code changes")
         dog.run_self_review()
+
+        # Checkpoint: Before testing phase
+        check_cancellation("self-review")
 
         # Step 9: Write and run comprehensive tests
         logger.info("Writing and running comprehensive tests")
@@ -359,6 +388,132 @@ Max 3-5 bullet points."""
             "pr_url": pr_info["pr_url"],
             "branch_name": branch_name,
             "dog_name": dog_display_name,
+        }
+
+    except TaskCancelled as cancel_exc:
+        logger.info(f"Task {task_id} was cancelled by {cancel_exc.cancelled_by} during {cancel_exc.phase}")
+
+        # Determine what was completed
+        phase_descriptions = {
+            "initialization": "Repository cloned and branch created",
+            "planning": "Implementation plan generated",
+            "implementation": "Code changes implemented",
+            "self-review": "Code changes reviewed and improved",
+            "testing": "Tests written and verified"
+        }
+        phase_completed = phase_descriptions.get(cancel_exc.phase, "Initial setup")
+
+        try:
+            # Update PR description with cancellation note if PR was created
+            if pr_info:
+                logger.info("Updating PR with cancellation notice")
+
+                # Generate cancelled PR body
+                from datetime import datetime
+                import pytz
+
+                local_tz = pytz.timezone('America/Los_Angeles')
+                request_time = datetime.fromtimestamp(start_time, tz=pytz.UTC).astimezone(local_tz)
+                request_time_str = request_time.strftime("%B %d, %Y at %I:%M:%S %p %Z")
+
+                import time as time_module
+                cancel_time = time_module.time()
+                duration_seconds = cancel_time - start_time
+                minutes = int(duration_seconds // 60)
+                seconds = int(duration_seconds % 60)
+                if minutes > 0:
+                    duration_str = f"{minutes} minute{'s' if minutes != 1 else ''} and {seconds} second{'s' if seconds != 1 else ''}"
+                else:
+                    duration_str = f"{seconds} second{'s' if seconds != 1 else ''}"
+
+                if requester_profile_url:
+                    requester_link = f"[{requester_name}]({requester_profile_url})"
+                else:
+                    requester_link = requester_name
+
+                cancelled_pr_body = f"""## 🐕 Dogwalker AI Task Report
+
+### 👤 Requester
+**{requester_link}** requested this change
+
+### 📋 Request
+> {task_description}
+
+### 📅 When
+Requested on **{request_time_str}**
+
+### 🛑 Task Cancelled
+**This task was cancelled by {cancel_exc.cancelled_by}** during the {cancel_exc.phase} phase.
+
+### ✅ What Was Completed
+{phase_completed}
+
+### ❌ What Was Not Completed
+The task was stopped before completion. The following phases were not executed:
+"""
+
+                # List remaining phases
+                all_phases = ["initialization", "planning", "implementation", "self-review", "testing", "finalization"]
+                current_phase_index = all_phases.index(cancel_exc.phase) if cancel_exc.phase in all_phases else 0
+                remaining_phases = all_phases[current_phase_index + 1:]
+
+                phase_names = {
+                    "planning": "- Implementation planning",
+                    "implementation": "- Code implementation",
+                    "self-review": "- Self-review and improvements",
+                    "testing": "- Test writing and validation",
+                    "finalization": "- Final PR updates"
+                }
+
+                for phase in remaining_phases:
+                    if phase in phase_names:
+                        cancelled_pr_body += f"\n{phase_names[phase]}"
+
+                cancelled_pr_body += f"""
+
+### ⏱️ Time Before Cancellation
+Worked for **{duration_str}** before cancellation.
+
+---
+🤖 Generated with [Dogwalker AI](https://dogwalker.dev)
+
+_Note: This is a partial implementation that was cancelled mid-execution._
+"""
+
+                # Update the PR
+                github_client.update_pull_request(
+                    pr_number=pr_info["pr_number"],
+                    body=cancelled_pr_body,
+                )
+
+            # Post cancellation message to Slack
+            if slack_client:
+                slack_client.chat_postMessage(
+                    channel=channel_id,
+                    thread_ts=thread_ts,
+                    text=format_task_cancelled(
+                        dog_name=dog_display_name,
+                        cancelled_by=cancel_exc.cancelled_by,
+                        pr_url=pr_info["pr_url"] if pr_info else None,
+                        phase_completed=phase_completed
+                    )
+                )
+
+        except Exception as e:
+            logger.error(f"Error handling cancellation: {e}")
+
+        # Clear cancellation signal
+        cancellation_manager.clear_cancellation(task_id)
+
+        # Mark dog as free
+        dog_selector.mark_dog_free(dog_name, task_id)
+
+        return {
+            "status": "cancelled",
+            "task_id": task_id,
+            "cancelled_by": cancel_exc.cancelled_by,
+            "phase": cancel_exc.phase,
+            "pr_url": pr_info["pr_url"] if pr_info else None,
         }
 
     except Exception as exc:

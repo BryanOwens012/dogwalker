@@ -41,6 +41,29 @@ Dogwalker automates the entire software development workflow from task descripti
 
 All updates post to the Slack thread for visibility, so you can track progress without leaving Slack.
 
+### Task Cancellation
+
+You can cancel in-progress tasks at any time:
+
+- **Cancel Button** - Click the "Cancel Task" button in the initial Slack message
+- **Graceful Shutdown** - The dog finishes its current operation (won't leave work half-done)
+- **Partial PR** - Draft PR is updated with what was completed vs. what was planned
+- **Clear Status** - Cancellation message shows who cancelled and what was done
+
+**Checkpoints:**
+- Before planning phase
+- Before implementation
+- Before self-review
+- Before testing
+
+When cancelled, the PR description is updated to show:
+- What was completed before cancellation
+- What was not completed
+- Who cancelled the task and when
+- Time worked before cancellation
+
+This gives you control without losing partial progress.
+
 ## Architecture
 
 ### Components
@@ -146,9 +169,12 @@ dogwalker/
 │   │   │   ├── tasks.py          # Celery task definitions
 │   │   │   └── listeners/        # Event listeners (modular)
 │   │   │       ├── __init__.py
-│   │   │       └── events/
+│   │   │       ├── events/
+│   │   │       │   ├── __init__.py
+│   │   │       │   └── app_mentioned.py  # @mention handler
+│   │   │       └── actions/
 │   │   │           ├── __init__.py
-│   │   │           └── app_mentioned.py  # @mention handler
+│   │   │           └── cancel_task.py     # Cancel button handler
 │   │   ├── requirements.txt
 │   │   ├── railway.json
 │   │   └── README.md
@@ -158,6 +184,7 @@ dogwalker/
 │   │   │   ├── worker_tasks.py  # Task implementation
 │   │   │   ├── dog.py           # Aider wrapper
 │   │   │   ├── repo_manager.py  # Git operations
+│   │   │   ├── cancellation.py  # Cancellation management
 │   │   │   └── celery_app.py    # Worker configuration
 │   │   ├── requirements.txt
 │   │   ├── railway.json
@@ -351,6 +378,7 @@ DOGS='[
 - ✅ **Multiple dogs** - Configure 1-N dogs via DOGS env var
 - ✅ **Load balancing** - Least-busy algorithm distributes tasks evenly
 - ✅ **Parallel processing** - Multiple dogs work simultaneously
+- ✅ **Task cancellation** - Cancel in-progress tasks with Slack button, graceful shutdown with partial PR
 
 ## Features to Skip Initially
 - AI code review (human review only)

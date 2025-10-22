@@ -3,18 +3,44 @@
 from typing import Optional
 
 
-def format_task_started(dog_name: str, task_description: str) -> str:
+def format_task_started(dog_name: str, task_description: str, task_id: str) -> dict:
     """
-    Format a message for when a dog starts a task.
+    Format a message with interactive cancel button for when a dog starts a task.
 
     Args:
         dog_name: Name of the dog taking the task
         task_description: Description of the task
+        task_id: Unique task identifier for cancellation
 
     Returns:
-        Formatted Slack message
+        Slack message with blocks including cancel button
     """
-    return f"🐕 *{dog_name}* is taking this task!\n\n_{task_description}_"
+    return {
+        "blocks": [
+            {
+                "type": "section",
+                "text": {
+                    "type": "mrkdwn",
+                    "text": f"🐕 *{dog_name}* is taking this task!\n\n_{task_description}_"
+                }
+            },
+            {
+                "type": "actions",
+                "elements": [
+                    {
+                        "type": "button",
+                        "text": {
+                            "type": "plain_text",
+                            "text": "Cancel Task"
+                        },
+                        "style": "danger",
+                        "action_id": "cancel_task",
+                        "value": task_id,
+                    }
+                ]
+            }
+        ]
+    }
 
 
 def format_draft_pr_created(pr_title: str, pr_url: str, plan_preview: str, dog_name: str) -> str:
@@ -73,6 +99,39 @@ def format_task_failed(error_message: str, dog_name: str) -> str:
         Formatted Slack message
     """
     return f"❌ *Task failed*\n\n```{error_message}```"
+
+
+def format_task_cancelled(
+    dog_name: str,
+    cancelled_by: str,
+    pr_url: Optional[str] = None,
+    phase_completed: Optional[str] = None
+) -> str:
+    """
+    Format a message for when a task is cancelled by user.
+
+    Args:
+        dog_name: Name of the dog that was working on the task
+        cancelled_by: Display name of person who cancelled the task
+        pr_url: URL of the draft PR (if created before cancellation)
+        phase_completed: Description of what was completed before cancellation
+
+    Returns:
+        Formatted Slack message
+    """
+    message = f"🛑 *Task cancelled by {cancelled_by}*\n\n"
+
+    if phase_completed:
+        message += f"_{dog_name} completed: {phase_completed}_\n\n"
+    else:
+        message += f"_{dog_name} stopped before making changes._\n\n"
+
+    if pr_url:
+        message += f"Draft PR with partial progress: <{pr_url}|View PR>"
+    else:
+        message += "No PR was created."
+
+    return message
 
 
 def format_draft_pr_body(
