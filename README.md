@@ -64,6 +64,40 @@ When cancelled, the PR description is updated to show:
 
 This gives you control without losing partial progress.
 
+### Bi-Directional Communication
+
+Dogs can respond to human feedback and ask clarifying questions during task execution:
+
+- **Reply to give feedback** - Post messages in the Slack thread while a dog is working
+- **Automatic acknowledgment** - Dogs react with 👀 emoji to show they've seen your message
+- **Feedback incorporation** - Dogs automatically check for and incorporate your feedback before each major phase
+- **Ask clarifying questions** - Dogs can ask questions and wait for your response (used sparingly, only for critical decisions)
+- **Autonomous by default** - Dogs try to work independently using existing patterns and best practices
+
+**How it works:**
+1. While a dog is working, post a message in the thread with feedback or change requests
+2. The dog checks for messages before each phase (implementation, self-review, testing)
+3. Any feedback is incorporated into the current work automatically
+4. For critical decisions, dogs can ask questions and pause until you respond
+
+**Example:**
+```
+You: @dogwalker add a user profile page
+Dog: 🐕 Coregi is taking this task!
+Dog: 📋 Coregi created a draft PR with the plan...
+
+[You review the plan and see it's missing something]
+You: Also add an avatar upload feature
+
+[Dog sees your message]
+Dog: 🔄 I've received your feedback and will incorporate it into my implementation! 👍
+
+[Dog includes avatar upload in the implementation]
+Dog: ✅ Work complete! PR ready for review
+```
+
+This enables collaborative development where dogs work autonomously but can incorporate human guidance when needed.
+
 ## Architecture
 
 ### Components
@@ -379,6 +413,7 @@ DOGS='[
 - ✅ **Load balancing** - Least-busy algorithm distributes tasks evenly
 - ✅ **Parallel processing** - Multiple dogs work simultaneously
 - ✅ **Task cancellation** - Cancel in-progress tasks with Slack button, graceful shutdown with partial PR
+- ✅ **Bi-directional communication** - Dogs can respond to feedback and ask clarifying questions via Slack
 
 ## Features to Skip Initially
 - AI code review (human review only)
@@ -388,29 +423,22 @@ DOGS='[
 
 ## Longer-Term Vision
 
-As the system matures, enable bi-directional collaboration between AI agents and humans:
+**Bi-directional communication is now implemented!** Dogs can respond to human feedback and ask clarifying questions during execution.
 
-**Human-in-the-Loop Product Decisions:**
-- Dogwalker or dogs can ask clarifying questions in Slack threads when requirements are ambiguous
-- Example: "Should the rate limit be per-user or per-IP? React with 👤 for per-user or 🌐 for per-IP"
-- Example: "I found two ways to implement this - A) faster but less maintainable, B) cleaner but more files. Which do you prefer?"
-- Agents pause work and wait for human input before proceeding
-- This transforms the system from "autonomous executor" to "intelligent collaborator"
+**Future Enhancements:**
+- **Reaction-based responses**: Quick decisions via emoji reactions (e.g., 👤 for per-user, 🌐 for per-IP)
+- **Confidence-based questioning**: Dogs automatically detect uncertainty and ask questions
+- **Multi-option prompts**: Present A/B/C choices with structured responses
+- **Learning from feedback**: Track which feedback patterns lead to better PRs
+- **Progress streaming**: Real-time updates as dogs make changes (vs. phase-based updates)
 
-**Benefits:**
-- Reduces failed PRs from misunderstood requirements
-- Allows dogs to handle more complex/ambiguous tasks
-- Keeps humans in control without requiring them to specify every detail upfront
-- Creates a conversational development workflow
+**Already Working:**
+- ✅ Text-based feedback incorporation during execution
+- ✅ Dogs can ask questions and wait for responses
+- ✅ Autonomous work with human oversight
+- ✅ Conversational development workflow
 
-**Implementation:**
-- Dogs detect uncertainty (via prompt engineering or confidence scores)
-- Post question to Slack thread with reaction options or text reply
-- Celery task pauses (with timeout)
-- Human responds via Slack
-- Dog resumes with clarified context
-
-This evolution positions Dogwalker as a collaborative coding partner rather than a simple automation tool.
+This positions Dogwalker as a collaborative coding partner rather than a simple automation tool.
 
 ## Metrics to Track
 

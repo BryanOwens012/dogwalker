@@ -150,11 +150,12 @@ Go to "OAuth & Permissions" and add these scopes:
 **Bot Token Scopes:**
 - `app_mentions:read` - Receive @mentions
 - `chat:write` - Post messages
-- `channels:history` - Read channel messages
+- `channels:history` - Read channel messages (for bi-directional communication)
 - `groups:history` - Read private channel messages
 - `users:read` - Read user display names and profile info
 - `team:read` - Read workspace info (for profile URLs)
 - `files:read` - Download images and files attached to messages
+- `reactions:write` - Add emoji reactions to acknowledge messages
 
 ### 3. Enable Socket Mode
 
@@ -169,6 +170,8 @@ Go to "OAuth & Permissions" and add these scopes:
 2. Enable Events
 3. Subscribe to bot events:
    - `app_mention` - When someone @mentions the bot
+   - `message.channels` - Read messages in public channels (for bi-directional communication)
+   - `message.groups` - Read messages in private channels (for bi-directional communication)
 
 ### 5. Install App to Workspace
 

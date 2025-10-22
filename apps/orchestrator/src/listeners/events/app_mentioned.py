@@ -252,6 +252,22 @@ def handle_app_mention(event: dict, say: Say, client: WebClient, logger: Logger)
         # Mark dog as busy with this task (for load balancing)
         dog_selector.mark_dog_busy(dog_name, task_id)
 
+        # Store thread <-> task mappings for message tracking
+        redis_client = dog_selector.redis_client
+        if redis_client:
+            try:
+                # Map thread_ts to task_id (for message listener)
+                thread_key = f"dogwalker:thread_tasks:{thread_ts}"
+                redis_client.set(thread_key, task_id, ex=86400)  # 24 hour TTL
+
+                # Map task_id to thread_ts (for worker to find its thread)
+                task_key = f"dogwalker:task_threads:{task_id}"
+                redis_client.set(task_key, thread_ts, ex=86400)  # 24 hour TTL
+
+                logger.info(f"Stored thread mappings for task {task_id}")
+            except Exception as e:
+                logger.error(f"Failed to store thread mappings: {e}")
+
         # Acknowledge immediately (Slack requires response within 3 seconds)
         message = format_task_started(dog_display_name, task_description, task_id)
         say(

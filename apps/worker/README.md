@@ -15,7 +15,21 @@ AI coding agent that uses Aider to make code changes.
   - **Implementation**: Makes code changes based on task
   - **Self-review**: Critiques and improves code quality
   - **Test writing**: Writes comprehensive tests and verifies they pass
+- Bi-directional Slack communication:
+  - `ask_human()`: Ask clarifying questions and wait for responses
+  - `check_for_feedback()`: Check for human feedback without blocking
 - Verifies changes were made
+
+### `dog_communication.py`
+Bi-directional Slack communication helper.
+
+**Features:**
+- Post messages, questions, and updates to Slack threads
+- Read human messages from Redis (non-blocking)
+- Wait for human responses with timeout (blocking)
+- Format feedback for AI prompt injection
+- Collect and format all thread messages for PR descriptions
+- Message pointer tracking to avoid re-reading messages
 
 ### `repo_manager.py`
 Git repository operations (clone, branch, commit, push).
@@ -35,13 +49,18 @@ Celery task implementation - actual execution logic.
 3. Generate implementation plan with Aider
 4. Push empty branch and create draft PR with plan
 5. Post draft PR announcement to Slack with plan preview
-6. Run Aider to implement code changes
-7. Run self-review phase for quality improvements
-8. Write comprehensive tests and verify they pass
-9. Commit and push all changes
-10. Update PR description with complete details
-11. Mark PR as "Ready for Review" (exit draft state)
-12. Post completion announcement to Slack
+6. **Check for human feedback** (checkpoint 1)
+7. Run Aider to implement code changes
+8. **Check for human feedback** (checkpoint 2)
+9. Run self-review phase for quality improvements
+10. **Check for human feedback** (checkpoint 3)
+11. Write comprehensive tests and verify they pass
+12. **Check for human feedback** (checkpoint 4 - final)
+13. Commit and push all changes
+14. Collect all thread feedback for PR description
+15. Update PR description with complete details and thread feedback
+16. Mark PR as "Ready for Review" (exit draft state)
+17. Post completion announcement to Slack
 
 ### `celery_app.py`
 Celery worker configuration.
@@ -139,10 +158,65 @@ dog = Dog(repo_path=work_dir, map_tokens=2048)
 - Check GitHub token has `repo` scope
 - Ensure branch name is valid
 
+## Bi-Directional Communication
+
+Dogs can read and respond to human feedback during task execution:
+
+### How It Works
+
+1. **Human posts feedback** in Slack thread while dog is working
+2. **Orchestrator stores message** in Redis (`dogwalker:thread_messages:{thread_ts}`)
+3. **Orchestrator adds 👀 reaction** to acknowledge receipt
+4. **Worker checks for feedback** at 4 key checkpoints:
+   - Before implementation
+   - After implementation
+   - After self-review
+   - After testing (final checkpoint)
+5. **Worker incorporates feedback** by re-running Aider with feedback prompt
+6. **Worker posts acknowledgment** to Slack: "I've received your feedback..."
+7. **PR description includes thread feedback** in "💬 Thread Feedback" section
+
+### Feedback Checkpoints
+
+Each checkpoint follows this pattern:
+```python
+feedback = communication.check_for_feedback()
+if feedback:
+    communication.post_update("I've received your feedback and will incorporate it!")
+    feedback_prompt = communication.format_feedback_for_prompt(feedback)
+    dog.run_task(feedback_prompt)  # Re-run Aider with feedback
+```
+
+### DogCommunication Methods
+
+**Non-blocking (used at checkpoints):**
+- `check_for_feedback()` - Quick check, returns None if no new messages
+
+**Blocking (future use for questions):**
+- `ask_human(question, timeout=600)` - Ask question and wait for response
+- `wait_for_response(timeout=600)` - Poll for messages until timeout
+
+**Posting to Slack:**
+- `post_message(text, emoji)` - Send message to thread
+- `post_question(question)` - Ask question and indicate waiting
+- `post_update(message)` - Send status update
+
+**PR Description:**
+- `get_all_messages()` - Retrieve all thread messages
+- `format_messages_for_pr()` - Format as markdown bullet list
+
+## Implemented Features
+
+- ✅ **Bi-directional communication** - Dogs read and respond to feedback
+- ✅ **Multiple feedback checkpoints** - 4 checkpoints during task lifecycle
+- ✅ **Thread feedback in PRs** - All messages included in PR description
+- ✅ **Dog helper methods** - `ask_human()` and `check_for_feedback()`
+
 ## Future Enhancements
 
 - Multiple models per complexity (Sonnet for hard, Haiku for easy)
 - Better error recovery (retry with clarification)
+- **Proactive dog questions** - Dogs ask clarifying questions when needed
 - Cost tracking per task
 - Time estimation
 - Dog specialization (frontend, backend, testing, etc.)
