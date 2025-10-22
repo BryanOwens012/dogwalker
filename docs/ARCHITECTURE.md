@@ -72,6 +72,7 @@ Dogwalker is a multi-agent AI coding system that automates the path from Slack f
 - `tasks.py` - Celery task definitions (contract)
 - `listeners/` - Modular event handlers
   - `listeners/events/app_mentioned.py` - @mention handler
+  - `listeners/events/message.py` - Thread message handler (bi-directional communication)
   - `listeners/__init__.py` - Register all listeners
 
 **Architecture Pattern:**
@@ -89,6 +90,9 @@ Uses modular listener pattern (inspired by [bolt-python-assistant-template](http
 5. Create Celery task with task metadata
 6. Post immediate acknowledgment to Slack
 7. Store task ID for status tracking
+8. Listen for thread messages posted during task execution
+9. Store human feedback in Redis for workers to read
+10. Add 👀 reaction to acknowledge message receipt
 
 **Load Balancing:**
 - Tracks active tasks per dog in Redis (`dogwalker:active_tasks:{dog_name}`)
@@ -109,6 +113,7 @@ Uses modular listener pattern (inspired by [bolt-python-assistant-template](http
 **Key Files:**
 - `worker_tasks.py` - Actual task implementation
 - `dog.py` - Aider wrapper for code editing
+- `dog_communication.py` - Bi-directional Slack communication helper
 - `repo_manager.py` - Git operations (clone, branch, push)
 - `celery_app.py` - Celery worker configuration
 
@@ -119,14 +124,19 @@ Uses modular listener pattern (inspired by [bolt-python-assistant-template](http
 4. Generate implementation plan using Aider
 5. Push empty branch and create draft PR with plan
 6. Post draft PR to Slack with plan preview
-7. Run Aider to implement changes
-8. Run self-review phase for code quality improvements
-9. Write comprehensive tests and verify they pass
-10. Commit and push final changes
-11. Update PR description with complete details
-12. Mark PR as "Ready for Review" (exit draft state)
-13. Post completion to Slack thread
-14. Clean up ephemeral workspace
+7. **Check for human feedback** before implementation
+8. Run Aider to implement changes
+9. **Check for human feedback** after implementation
+10. Run self-review phase for code quality improvements
+11. **Check for human feedback** after self-review
+12. Write comprehensive tests and verify they pass
+13. **Check for human feedback** after testing (final checkpoint)
+14. Commit and push final changes
+15. Collect all thread feedback for PR description
+16. Update PR description with complete details and thread feedback
+17. Mark PR as "Ready for Review" (exit draft state)
+18. Post completion to Slack thread
+19. Clean up ephemeral workspace
 
 ### Shared (apps/shared)
 
@@ -247,6 +257,157 @@ Uses modular listener pattern (inspired by [bolt-python-assistant-template](http
     ↓
 24. Worker cleans up workdir/task_id/
 ```
+
+## Bi-Directional Communication
+
+**Overview:** Dogs can read and respond to human feedback posted in Slack threads during task execution.
+
+### Architecture
+
+```
+┌──────────────┐         ┌──────────────┐         ┌──────────────┐
+│    Human     │         │ Orchestrator │         │    Worker    │
+│   (Slack)    │         │   Message    │         │     Dog      │
+│              │         │   Listener   │         │              │
+└──────┬───────┘         └──────┬───────┘         └──────┬───────┘
+       │                        │                        │
+       │ Posts feedback         │                        │
+       │ in thread             │                        │
+       ├───────────────────────>│                        │
+       │                        │                        │
+       │                        │ Stores in Redis        │
+       │                        │ (thread_messages)      │
+       │                        │                        │
+       │ 👀 reaction            │                        │
+       │<───────────────────────┤                        │
+       │                        │                        │
+       │                        │                        │ Checkpoint:
+       │                        │                        │ Check Redis
+       │                        │<───────────────────────┤
+       │                        │                        │
+       │                        │ Returns new messages   │
+       │                        ├───────────────────────>│
+       │                        │                        │
+       │                        │                        │ Incorporates
+       │                        │                        │ feedback into
+       │                        │                        │ work
+       │                        │                        │
+       │ Acknowledgment:        │                        │
+       │ "I've received         │<───────────────────────┤
+       │  your feedback..."     │                        │
+       │<───────────────────────┴────────────────────────┘
+```
+
+### Redis Schema
+
+**Thread-to-Task Mapping:**
+```
+dogwalker:thread_tasks:{thread_ts}
+  Type: String
+  Value: task_id
+  TTL: 24 hours
+  Purpose: Message listener looks up which task owns this thread
+```
+
+**Task-to-Thread Mapping:**
+```
+dogwalker:task_threads:{task_id}
+  Type: String
+  Value: thread_ts
+  TTL: 24 hours
+  Purpose: Worker looks up which thread to post messages to
+```
+
+**Thread Messages:**
+```
+dogwalker:thread_messages:{thread_ts}
+  Type: List
+  Values: JSON objects with {user_id, user_name, text, timestamp, message_ts}
+  TTL: 24 hours
+  Purpose: Store all messages posted by humans in the thread
+```
+
+### DogCommunication Helper
+
+**Purpose:** Abstraction layer for bi-directional Slack communication
+
+**Key Methods:**
+- `post_message(text, emoji)` - Send updates to Slack thread
+- `post_question(question)` - Ask questions and wait for response
+- `post_update(message)` - Post status updates
+- `get_new_messages()` - Read new messages since last check (non-blocking)
+- `wait_for_response(timeout)` - Block and poll for responses (blocking)
+- `check_for_feedback()` - Quick check for feedback (non-blocking)
+- `format_feedback_for_prompt(feedback)` - Format for AI injection
+- `get_all_messages()` - Retrieve all thread messages
+- `format_messages_for_pr()` - Format as markdown for PR description
+
+**Message Pointer Tracking:**
+```python
+self.message_pointer = 0  # Track last read position
+new_messages = all_messages[self.message_pointer:]
+self.message_pointer = len(all_messages)
+```
+
+### Feedback Checkpoints
+
+Workers check for new feedback at **4 key points** during execution:
+
+1. **Before Implementation** - Check for pre-existing feedback posted early
+2. **After Implementation** - Incorporate feedback before self-review
+3. **After Self-Review** - Incorporate feedback before testing
+4. **After Testing** - Final chance to incorporate feedback before pushing
+
+At each checkpoint:
+1. Call `communication.check_for_feedback()`
+2. If feedback exists:
+   - Post acknowledgment: "I've received your feedback..."
+   - Format for AI: `communication.format_feedback_for_prompt(feedback)`
+   - Re-run Aider with feedback incorporated: `dog.run_task(feedback_prompt)`
+3. Continue to next phase
+
+### Use Cases
+
+**Mid-Task Corrections:**
+```
+User: @dogwalker implement a login form
+Dog: [starts working]
+User: Make sure to use Tailwind for styling
+Dog: I've received your feedback and will incorporate it!
+```
+
+**Iterative Refinement:**
+```
+User: @dogwalker add dark mode
+Dog: [implements basic dark mode]
+User: Also add system preference detection
+Dog: I've received your feedback and will incorporate it during my review!
+```
+
+**Critical Clarifications (Future):**
+```
+Dog: Should I use Redux or Context API for state management?
+User: Use Context API
+Dog: Thanks! Proceeding with Context API...
+```
+
+### Thread Feedback in PR Descriptions
+
+All human messages are collected and included in the final PR description:
+
+```markdown
+### 💬 Thread Feedback
+
+The following feedback was provided during implementation:
+
+- **Bryan Owens:** Make sure that the buttons are all Tailwind cursor-pointer
+- **Jane Smith:** Also add hover states for better UX
+```
+
+**Benefits:**
+- Transparency for PR reviewers
+- Context for why certain decisions were made
+- Audit trail of human involvement
 
 ## Context Management
 
@@ -377,13 +538,20 @@ Code errors, validation failures, Aider failures → Fail immediately
 - ✅ Assign to least busy dog (load balancing)
 - ⏳ Dog specialization (frontend, backend, tests, docs) - Future
 
+### Bi-Directional Communication ✅
+- ✅ Dogs read human messages posted in Slack threads
+- ✅ Multiple feedback checkpoints during task execution
+- ✅ Automatic message acknowledgment with 👀 emoji
+- ✅ Thread feedback included in PR descriptions
+- ✅ Dogs can ask clarifying questions (implementation complete, usage optional)
+- ⏳ Dog-initiated questions for critical decisions - Future (framework ready)
+
 ## Future Enhancements
 
-### Human-in-the-Loop
-- Dogs can ask clarifying questions
-- Pause task until human responds
-- Post questions with reaction options
-- Resume with clarified context
+### Advanced Human-in-the-Loop
+- Proactive question asking by dogs (framework exists, needs usage patterns)
+- Multi-turn conversations in threads
+- Feedback-driven PR re-opening
 
 ### Advanced Features
 - Multi-step tasks (split into sub-tasks)

@@ -14,7 +14,8 @@ src/
     ├── __init__.py        # Register all listeners
     ├── events/
     │   ├── __init__.py    # Register event handlers
-    │   └── app_mentioned.py  # Handle @dogwalker mentions
+    │   ├── app_mentioned.py  # Handle @dogwalker mentions
+    │   └── message.py     # Handle thread messages (bi-directional communication)
     └── actions/           # Future: button clicks, etc.
 ```
 
@@ -38,7 +39,17 @@ Following Slack Bolt best practices (inspired by bolt-python-assistant-template)
 - Generates descriptive branch name (e.g., `bryans-coregi/add-rate-limiting`)
 - Records start time for accurate duration tracking
 - Creates Celery task with full metadata
+- Creates thread/task mappings in Redis for bi-directional communication
 - Posts acknowledgment to Slack thread (showing dog display name)
+
+**`message`** - Handle thread messages (bi-directional communication)
+- Listens for all messages posted in threads where dogs are working
+- Filters for threaded messages only (ignores channel-level messages)
+- Ignores bot messages to prevent infinite loops
+- Checks Redis to see if thread has an active task
+- Stores human messages in Redis for workers to read
+- Adds 👀 emoji reaction to acknowledge message receipt
+- Messages include user name, text, and timestamp
 
 ## Running Locally
 
@@ -272,12 +283,18 @@ redis-server
 redis-cli ping  # Should return "PONG"
 ```
 
+## Implemented Features
+
+- ✅ **Multiple dogs** with intelligent load balancing
+- ✅ **Bi-directional communication** - Dogs read and respond to feedback in threads
+- ✅ **Thread message tracking** - Store and retrieve messages via Redis
+- ✅ **Emoji acknowledgments** - 👀 reaction when messages received
+
 ## Future Enhancements
 
-- **Multiple dogs** with intelligent load balancing
 - **Task prioritization** (urgent vs. normal)
-- **Human-in-the-loop** clarification questions
-- **Task status updates** in threads
+- **Proactive dog questions** - Dogs ask clarifying questions when needed
+- **Task status updates** in threads (progress indicators)
 - **Dog specialization** (frontend dog, backend dog, etc.)
 - **Cost tracking** per task
 - **Task history** and analytics

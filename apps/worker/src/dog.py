@@ -25,7 +25,8 @@ class Dog:
         self,
         repo_path: Path,
         model_name: str = "anthropic/claude-sonnet-4-20250514",  # Aider requires provider prefix
-        map_tokens: int = 1024
+        map_tokens: int = 1024,
+        communication: Optional[any] = None  # DogCommunication instance for bi-directional Slack
     ):
         """
         Initialize Dog with Aider.
@@ -34,11 +35,13 @@ class Dog:
             repo_path: Path to git repository
             model_name: Claude model to use (default: Sonnet 4.5)
             map_tokens: Tokens for repo map context (default: 1024)
+            communication: DogCommunication instance for Slack interaction (optional)
         """
         self.repo_path = repo_path
         self.model_name = model_name
         self.map_tokens = map_tokens
         self.coder: Optional[Coder] = None
+        self.communication = communication  # Bi-directional Slack communication
 
         # Cost tracking
         self.total_cost = 0.0
@@ -576,6 +579,7 @@ _This PR will be updated with changes and marked ready for review when complete.
         critical_review_points: str,
         image_files: Optional[list[str]] = None,
         cost_report: Optional[dict[str, float]] = None,
+        thread_feedback: Optional[str] = None,
     ) -> str:
         """
         Generate final PR description using Claude API.
@@ -590,6 +594,7 @@ _This PR will be updated with changes and marked ready for review when complete.
             critical_review_points: Critical areas needing review (or empty string)
             image_files: List of image file paths (optional)
             cost_report: API cost breakdown (optional, dict with "total_cost" and "breakdown")
+            thread_feedback: Markdown-formatted list of thread messages (optional)
 
         Returns:
             Complete final PR description in markdown
@@ -648,6 +653,14 @@ _This PR will be updated with changes and marked ready for review when complete.
 </details>
 """
 
+        # Format thread feedback section if available
+        thread_feedback_context = ""
+        if thread_feedback:
+            thread_feedback_context = f"""
+
+Thread Feedback (messages received during implementation):
+{thread_feedback}"""
+
         prompt = f"""Generate a professional GitHub pull request description for completed work.
 
 Context:
@@ -656,7 +669,7 @@ Context:
 - Requested on: {request_time_str}
 - Duration: {duration_str}
 - Implementation Plan:
-{plan}
+{plan}{thread_feedback_context}
 
 Files Modified:
 {files_list}
@@ -671,13 +684,14 @@ Format the PR description as professional markdown with these sections:
 4. 📅 When section
 5. 🎯 Implementation Plan section
 6. 📝 Changes Made section (list the modified files)
-7. ⚠️ Critical Review Areas section (ONLY if there are critical points)
-8. ✅ Quality Assurance section with:
+7. 💬 Thread Feedback section (ONLY if thread feedback was provided during implementation)
+8. ⚠️ Critical Review Areas section (ONLY if there are critical points)
+9. ✅ Quality Assurance section with:
    - Self-reviewed by the AI agent
    - Comprehensive tests written and verified passing
    - All code changes validated before submission
-9. ⏱️ Task Duration section
-10. 💰 API Cost section{cost_section if cost_report else " (SKIP if no cost data provided)"}
+10. ⏱️ Task Duration section
+11. 💰 API Cost section{cost_section if cost_report else " (SKIP if no cost data provided)"}
 
 End with:
 ---
@@ -691,6 +705,19 @@ Provide ONLY the markdown PR description. Be professional and concise."""
             return self.call_claude_api(prompt, max_tokens=2000, category="final_pr_description")
         except Exception as e:
             logger.exception(f"Final PR description generation failed: {e}")
+
+            # Format thread feedback section for fallback template
+            thread_feedback_section = ""
+            if thread_feedback:
+                thread_feedback_section = f"""
+
+### 💬 Thread Feedback
+
+The following feedback was provided during implementation:
+
+{thread_feedback}
+"""
+
             # Fallback to basic template
             return f"""## 🐕 Dogwalker AI Task Report
 
@@ -710,7 +737,7 @@ Requested on **{request_time_str}**
 
 ### 📝 Changes Made
 {files_list}
-{critical_section}
+{thread_feedback_section}{critical_section}
 
 ### ✅ Quality Assurance
 This PR has been:
@@ -738,6 +765,58 @@ Co-Authored-By: Claude <noreply@anthropic.com>"""
             "total_cost": self.total_cost,
             "breakdown": self.cost_breakdown.copy()
         }
+
+    def ask_human(self, question: str, timeout: int = 600) -> Optional[str]:
+        """
+        Ask a clarifying question to the human via Slack and wait for response.
+
+        This should be used SPARINGLY - only when truly necessary for making
+        important product or architecture decisions that can't be inferred
+        from existing patterns.
+
+        Args:
+            question: The question to ask
+            timeout: Maximum time to wait for response in seconds (default: 10 minutes)
+
+        Returns:
+            Human's response as a string, or None if no response received
+        """
+        if not self.communication:
+            logger.warning("Cannot ask human - no communication channel available")
+            return None
+
+        logger.info(f"Asking human: {question[:100]}...")
+
+        # Post question to Slack
+        self.communication.post_question(question)
+
+        # Wait for response
+        messages = self.communication.wait_for_response(timeout=timeout, min_messages=1)
+
+        if not messages:
+            logger.warning("No response received from human")
+            return None
+
+        # Combine all responses
+        response = "\n\n".join(
+            f"{msg['user_name']}: {msg['text']}"
+            for msg in messages
+        )
+
+        logger.info(f"Received human response: {response[:100]}...")
+        return response
+
+    def check_for_feedback(self) -> Optional[str]:
+        """
+        Check for human feedback without blocking.
+
+        Returns:
+            Feedback text if available, None otherwise
+        """
+        if not self.communication:
+            return None
+
+        return self.communication.check_for_feedback()
 
     def cleanup(self) -> None:
         """Clean up Aider resources."""

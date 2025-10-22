@@ -25,6 +25,7 @@ from repo_manager import RepoManager
 from dog import Dog
 from dog_selector import DogSelector
 from cancellation import CancellationManager, TaskCancelled
+from dog_communication import DogCommunication
 
 logger = logging.getLogger(__name__)
 
@@ -184,9 +185,20 @@ def run_coding_task(
         # Checkpoint: Before planning phase
         check_cancellation("initialization")
 
+        # Step 3.5: Initialize communication helper for bi-directional Slack interaction
+        logger.info("Initializing dog communication channel")
+        communication = DogCommunication(
+            task_id=task_id,
+            thread_ts=thread_ts,
+            channel_id=channel_id,
+            dog_name=dog_display_name,
+            slack_client=slack_client,
+            redis_client=dog_selector.redis_client,
+        )
+
         # Step 4: Initialize Dog and generate PR title and implementation plan
         logger.info("Initializing AI agent (Dog)")
-        dog = Dog(repo_path=work_dir)
+        dog = Dog(repo_path=work_dir, communication=communication)
 
         logger.info("Generating concise PR title")
         # Generate AI-created title (max 57 chars to leave room for "[Dogwalker] " prefix)
@@ -272,9 +284,21 @@ def run_coding_task(
         # Checkpoint: Before implementation phase
         check_cancellation("planning")
 
+        # Check for human feedback before starting implementation
+        feedback = communication.check_for_feedback()
+        if feedback:
+            logger.info("Received human feedback before implementation, incorporating...")
+            communication.post_update("I've received your feedback and will incorporate it into my implementation! 👍")
+
         # Step 7: Run Aider to make code changes
         logger.info(f"Running Aider with task: {task_description}")
-        success = dog.run_task(task_description, image_files=image_files if image_files else None)
+
+        # Include feedback in task description if present
+        full_task_description = task_description
+        if feedback:
+            full_task_description = f"{task_description}\n\n{communication.format_feedback_for_prompt(feedback)}"
+
+        success = dog.run_task(full_task_description, image_files=image_files if image_files else None)
 
         if not success:
             raise ValueError("Aider did not produce code changes")
@@ -282,12 +306,38 @@ def run_coding_task(
         # Checkpoint: Before self-review phase
         check_cancellation("implementation")
 
+        # Check for feedback after implementation
+        logger.info("Checking for any new feedback after implementation")
+        post_impl_feedback = communication.check_for_feedback()
+        if post_impl_feedback:
+            logger.info("Received feedback after implementation, incorporating into self-review...")
+            communication.post_update("I've received your feedback and will incorporate it during my review! 👍")
+
+            # Run additional changes based on feedback
+            feedback_prompt = f"""{communication.format_feedback_for_prompt(post_impl_feedback)}
+
+Please make these changes now."""
+            dog.run_task(feedback_prompt)
+
         # Step 8: Run self-review
         logger.info("Running self-review on code changes")
         dog.run_self_review()
 
         # Checkpoint: Before testing phase
         check_cancellation("self-review")
+
+        # Check for feedback after self-review
+        logger.info("Checking for any new feedback after self-review")
+        post_review_feedback = communication.check_for_feedback()
+        if post_review_feedback:
+            logger.info("Received feedback after self-review, incorporating before testing...")
+            communication.post_update("I've received your feedback and will incorporate it before writing tests! 👍")
+
+            # Run additional changes based on feedback
+            feedback_prompt = f"""{communication.format_feedback_for_prompt(post_review_feedback)}
+
+Please make these changes now."""
+            dog.run_task(feedback_prompt)
 
         # Step 9: Write and run comprehensive tests
         logger.info("Writing and running comprehensive tests")
@@ -297,6 +347,25 @@ def run_coding_task(
             raise ValueError(f"Tests failed: {test_message}")
 
         logger.info(f"Tests completed successfully: {test_message}")
+
+        # Check for final feedback before pushing
+        logger.info("Checking for any final feedback before pushing changes")
+        final_feedback = communication.check_for_feedback()
+        if final_feedback:
+            logger.info("Received final feedback before pushing, incorporating now...")
+            communication.post_update("I've received your final feedback and will incorporate it before finishing! 👍")
+
+            # Run final changes based on feedback
+            feedback_prompt = f"""{communication.format_feedback_for_prompt(final_feedback)}
+
+Please make these changes now."""
+            dog.run_task(feedback_prompt)
+
+            # Re-run tests to ensure changes didn't break anything
+            logger.info("Re-running tests after incorporating final feedback")
+            test_success, test_message = dog.write_and_run_tests()
+            if not test_success:
+                raise ValueError(f"Tests failed after final feedback: {test_message}")
 
         # Step 10: Remove placeholder file and push final changes
         logger.info("Removing placeholder .gitkeep file")
@@ -349,6 +418,10 @@ Max 3-5 bullet points."""
         cost_report = dog.get_cost_report()
         logger.info(f"Total API cost for task: ${cost_report['total_cost']:.4f}")
 
+        # Collect thread feedback for PR description
+        logger.info("Collecting thread feedback for PR description")
+        thread_feedback = communication.format_messages_for_pr()
+
         # Generate complete final PR description
         final_pr_body = dog.generate_final_pr_description(
             task_description=task_description,
@@ -360,6 +433,7 @@ Max 3-5 bullet points."""
             critical_review_points=critical_review_points,
             image_files=image_files if image_files else None,
             cost_report=cost_report,
+            thread_feedback=thread_feedback,
         )
 
         github_client.update_pull_request(
