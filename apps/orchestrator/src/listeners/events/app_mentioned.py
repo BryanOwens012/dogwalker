@@ -179,6 +179,9 @@ def handle_app_mention(event: dict, say: Say, client: WebClient, logger: Logger)
         # Create task ID
         task_id = f"{channel_id}_{thread_ts}"
 
+        # Mark dog as busy with this task (for load balancing)
+        dog_selector.mark_dog_busy(dog_name, task_id)
+
         # Acknowledge immediately (Slack requires response within 3 seconds)
         say(
             text=format_task_started(dog_display_name, task_description),
