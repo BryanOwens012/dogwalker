@@ -68,19 +68,31 @@ Human types in Slack: "@dogwalker add rate limiting to /api/login"
         ↓
 Slack bot receives message, creates task in Celery queue
         ↓
-Posts to Slack thread: "🐕 Corgi is taking this task!"
+Posts to Slack thread: "🐕 Coregi is taking this task!"
         ↓
 Celery worker (dog) picks up task
         ↓
 Worker clones repo, creates feature branch
         ↓
+Dog generates implementation plan using Aider
+        ↓
+Worker pushes empty branch, creates DRAFT PR with plan
+        ↓
+Posts to Slack: "📋 Coregi created draft PR with plan [link + preview]"
+        ↓
 Aider (with Sonnet 4.5) explores codebase and edits code
         ↓
-Worker commits changes, pushes branch
+Dog runs self-review, makes improvements
         ↓
-Worker creates PR via GitHub API
+Dog writes comprehensive tests, verifies they pass
         ↓
-Posts to Slack thread: "✅ PR ready: [link]"
+Worker commits changes, pushes to branch
+        ↓
+Worker updates PR description with full details
+        ↓
+Worker marks PR as "Ready for Review" (exits draft)
+        ↓
+Posts to Slack thread: "✅ Work complete! PR ready for review [link]"
         ↓
 Human reviews and merges (or requests changes)
 ```
@@ -179,22 +191,36 @@ Aider provides the code editing primitives. It handles:
 - Context management (only loads relevant files)
 - Git integration (auto-commits)
 - Search/grep tools for codebase exploration
+- Multi-phase workflow (plan, implement, review, test)
 
 Usage pattern:
 ```python
 from aider.coders import Coder
 from aider.models import Model
+from aider.io import InputOutput
 
-model = Model("claude-sonnet-4.5-20250929")
+model = Model("anthropic/claude-sonnet-4-20250514")
+io = InputOutput(yes=True)  # Non-interactive mode
+
 coder = Coder.create(
-    model=model,
+    main_model=model,
+    io=io,
     fnames=None,  # Auto-detect relevant files
     auto_commits=True,
     map_tokens=1024  # Repo map for context
 )
 
+# Phase 1: Generate plan
+coder.run("Create implementation plan for: add rate limiting")
+
+# Phase 2: Implement
 coder.run("Add rate limiting to /api/login endpoint")
-# Aider explores codebase, edits files, commits
+
+# Phase 3: Self-review
+coder.run("Review changes for code quality, edge cases, and security")
+
+# Phase 4: Test
+coder.run("Write comprehensive tests and verify they pass")
 ```
 
 ### Context Management
@@ -207,12 +233,19 @@ Dogs don't read entire codebase. Instead:
 ### Task Queue (Celery)
 ```python
 @app.task(bind=True, max_retries=3)
-def run_coding_task(self, task_id, task_description, branch_name, dog_name):
+def run_coding_task(self, task_id, task_description, branch_name, dog_name, dog_display_name):
     # 1. Clone repo and checkout branch
-    # 2. Run Aider
-    # 3. Push branch
-    # 4. Create PR
-    # 5. Update Slack
+    # 2. Generate implementation plan
+    # 3. Push empty branch
+    # 4. Create draft PR with plan
+    # 5. Post draft PR to Slack (with plan preview)
+    # 6. Run Aider to implement changes
+    # 7. Run self-review and improvements
+    # 8. Write comprehensive tests and verify they pass
+    # 9. Push final changes
+    # 10. Update PR with complete details
+    # 11. Mark PR as ready for review
+    # 12. Post completion to Slack
 ```
 
 ### Dog Selection

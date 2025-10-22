@@ -142,27 +142,37 @@ class RepoManager:
         # Add all changes
         self._run_git(["add", "."])
 
-        # Commit with co-author attribution
+        # Commit with AI attribution
+        # Primary author is already set via git config (dog_name/dog_email)
         commit_message = f"""{message}
 
-🤖 Generated with Dogwalker AI
+🤖 Generated with [Dogwalker](https://dogwalker.dev)
 
-Co-Authored-By: Dogwalker <noreply@dogwalker.dev>"""
+Co-Authored-By: Claude <noreply@anthropic.com>"""
 
         self._run_git(["commit", "-m", commit_message])
 
         logger.info(f"Changes committed: {message}")
         return True
 
-    def get_modified_files(self) -> list[str]:
+    def get_modified_files(self, base_branch: str = "main") -> list[str]:
         """
-        Get list of files modified in current branch.
+        Get list of files modified in current branch compared to base branch.
+
+        Args:
+            base_branch: Base branch to compare against (default: main)
 
         Returns:
-            List of file paths that were modified
+            List of file paths that were modified (excludes .gitkeep)
         """
-        result = self._run_git(["diff", "--name-only", "HEAD~1"])
+        # Get all files changed between base branch and current HEAD
+        # Using three-dot syntax to get changes on current branch only
+        result = self._run_git(["diff", "--name-only", f"origin/{base_branch}...HEAD"])
         files = result.stdout.strip().split("\n") if result.stdout.strip() else []
+
+        # Filter out .gitkeep (implementation detail, not relevant to PR viewer)
+        files = [f for f in files if f and f != ".gitkeep"]
+
         return files
 
     def _run_git(self, args: list[str]) -> subprocess.CompletedProcess:

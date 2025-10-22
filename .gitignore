@@ -212,3 +212,4 @@ docs/AGENTS_APPENDLOG.md
 
 # Temporary workspace for cloning repos during task execution
 workdir/
+dump.rdb

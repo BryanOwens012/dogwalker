@@ -138,6 +138,8 @@ Go to "OAuth & Permissions" and add these scopes:
 - `chat:write` - Post messages
 - `channels:history` - Read channel messages
 - `groups:history` - Read private channel messages
+- `users:read` - Read user display names and profile info
+- `team:read` - Read workspace info (for profile URLs)
 
 ### 3. Enable Socket Mode
 
@@ -178,20 +180,29 @@ Create separate GitHub accounts for each dog:
 - Email: `coregi@bryanowens.dev`
 - Display Name: `Coregi (Dogwalker AI)`
 
-### 2. Create Personal Access Token
+### 2. Create Fine-Grained Personal Access Token
+
+**Important:** Use fine-grained tokens (not classic tokens, which are deprecated)
 
 For the dog account:
 
 1. Go to https://github.com/settings/tokens
-2. Click "Generate new token" → "Fine-grained token"
-3. Set expiration (1 year recommended)
-4. Select repositories (specific repos or all)
-5. Set permissions:
-   - **Contents**: Read and write
-   - **Pull requests**: Read and write
-   - **Workflows**: Read and write (if modifying CI/CD)
-6. Generate token
-7. Copy token → This is your `GITHUB_TOKEN`
+2. Click **"Fine-grained tokens"** tab
+3. Click **"Generate new token"**
+4. Configure:
+   - **Token name**: `Dogwalker - [DogName]`
+   - **Expiration**: 90 days or custom (max 1 year)
+   - **Resource owner**: Your account or organization
+   - **Repository access**: Select specific repositories or all
+5. Set **Repository permissions**:
+   - **Contents**: Read and write (push commits)
+   - **Pull requests**: Read and write (create PRs)
+   - **Metadata**: Read-only (auto-selected)
+   - **Workflows**: Read and write (optional - only if modifying CI/CD)
+6. Click **"Generate token"**
+7. **Copy token immediately** → This is your `GITHUB_TOKEN`
+   - Format: `github_pat_11AAAAAA...`
+   - You won't see it again!
 
 ### 3. Add Dog as Collaborator
 
@@ -279,7 +290,7 @@ celery@worker ready.
 
 2. Check orchestrator logs:
    ```
-   Creating task C123_1234567890.123456 for dog Bryans-Coregi
+   Creating task C123_1234567890.123456 for dog Coregi (Bryans-Coregi)
    Task queued with Celery task ID: abc123
    ```
 
@@ -287,22 +298,42 @@ celery@worker ready.
    ```
    Worker executing task C123_1234567890.123456 as Bryans-Coregi
    Cloning repository...
+   Generating implementation plan...
+   Creating draft PR...
    Running Aider...
-   Pushing branch...
-   Creating pull request...
+   Running self-review...
+   Writing tests...
+   Pushing changes...
+   Updating PR description...
+   Marking PR as ready for review...
    Task completed successfully
    ```
 
-4. Check Slack thread:
+4. Check Slack thread (you'll see 3 messages):
    ```
-   🐕 Bryans-Coregi is taking this task!
-   ✅ PR ready: https://github.com/owner/repo/pull/123
+   Message 1: 🐕 Coregi is taking this task!
+
+   Message 2: 📋 Coregi created a draft PR with the plan
+              [Dogwalker] Add a hello world function to README
+              Plan preview: **Proposed Implementation:** Analyze the codebase...
+              Now implementing the changes...
+
+   Message 3: ✅ Work complete! PR ready for review
+              [Dogwalker] Add a hello world function to README
+              Completed by Coregi
    ```
 
 5. Check GitHub:
-   - New branch: `dogwalker/1234567890-123456`
-   - New PR with changes
-   - PR description includes task details
+   - New branch: `bryans-coregi/add-a-hello-world-function-to-readme`
+   - PR initially shows as "Draft" with plan
+   - PR automatically marked as "Ready for review" when complete
+   - PR description includes:
+     - Requester (hyperlinked to Slack profile)
+     - Request timestamp (exact Pacific Time)
+     - Implementation plan
+     - Files modified
+     - Quality assurance checklist
+     - Task duration
 
 ## Troubleshooting
 
@@ -389,10 +420,13 @@ Monitor services in Railway dashboard:
 
 ### Slack Monitoring
 
-All task updates post to Slack threads:
-- Task started: "🐕 Dog is taking this task!"
-- Task completed: "✅ PR ready: [link]"
-- Task failed: "❌ Task failed: [error]"
+All task updates post to Slack threads with 3 key messages:
+1. **Task Started**: "🐕 Coregi is taking this task!"
+2. **Draft PR Created**: "📋 Coregi created a draft PR with the plan [link + preview]"
+3. **Task Completed**: "✅ Work complete! PR ready for review [link]"
+4. **Task Failed** (if errors occur): "❌ Task failed: [error]"
+
+Each message appears in the same Slack thread for easy tracking.
 
 ### Cost Tracking
 

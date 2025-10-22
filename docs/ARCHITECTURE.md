@@ -32,13 +32,17 @@ Dogwalker is a multi-agent AI coding system that automates the path from Slack f
 │                    Worker (Dog Agent)                        │
 │  1. Clones repo to ephemeral workdir                         │
 │  2. Creates feature branch                                   │
-│  3. Runs Aider (Claude Sonnet 4.5)                          │
-│  4. Aider edits code based on task                          │
-│  5. Commits changes with AI attribution                     │
-│  6. Pushes branch to GitHub                                 │
-│  7. Creates PR via GitHub API                               │
-│  8. Posts PR link to Slack thread                           │
-│  9. Cleans up workdir                                       │
+│  3. Generates implementation plan with Aider                 │
+│  4. Creates DRAFT PR with plan                               │
+│  5. Posts draft PR to Slack (with plan preview)             │
+│  6. Runs Aider to implement changes                         │
+│  7. Runs self-review and improvements                       │
+│  8. Writes comprehensive tests and verifies they pass       │
+│  9. Commits and pushes changes                              │
+│  10. Updates PR with complete details                       │
+│  11. Marks PR as "Ready for Review"                         │
+│  12. Posts completion to Slack thread                       │
+│  13. Cleans up workdir                                      │
 └────────────────────────┬────────────────────────────────────┘
                          │
                          v
@@ -104,14 +108,18 @@ Uses modular listener pattern (inspired by [bolt-python-assistant-template](http
 **Responsibilities:**
 1. Pick up tasks from Redis queue
 2. Clone target repo to ephemeral directory
-3. Create feature branch from main
-4. Run Aider with task description
-5. Aider explores codebase and makes edits
-6. Commit changes (auto-committed by Aider)
-7. Push branch to GitHub
-8. Create PR with formatted description
-9. Update Slack thread with PR link
-10. Clean up ephemeral workspace
+3. Create feature branch from main (descriptive name with dog prefix)
+4. Generate implementation plan using Aider
+5. Push empty branch and create draft PR with plan
+6. Post draft PR to Slack with plan preview
+7. Run Aider to implement changes
+8. Run self-review phase for code quality improvements
+9. Write comprehensive tests and verify they pass
+10. Commit and push final changes
+11. Update PR description with complete details
+12. Mark PR as "Ready for Review" (exit draft state)
+13. Post completion to Slack thread
+14. Clean up ephemeral workspace
 
 ### Shared (apps/shared)
 
@@ -156,14 +164,18 @@ Uses modular listener pattern (inspired by [bolt-python-assistant-template](http
    {
      task_id: "C123_1234567890.123456",
      task_description: "add rate limiting to /api/login",
-     branch_name: "dogwalker/1234567890-123456",
+     branch_name: "bryans-coregi/add-rate-limiting-to-api-login",
      dog_name: "Bryans-Coregi",
+     dog_display_name: "Coregi",
      dog_email: "coregi@bryanowens.dev",
      thread_ts: "1234567890.123456",
-     channel_id: "C123"
+     channel_id: "C123",
+     requester_name: "Bryan Owens",
+     requester_profile_url: "https://workspace.slack.com/team/U123",
+     start_time: 1234567890.123
    }
    ↓
-6. Bot posts to Slack: "🐕 Bryans-Coregi is taking this task!"
+6. Bot posts to Slack: "🐕 Coregi is taking this task!"
    ↓
 7. Task queued in Redis
 ```
@@ -175,25 +187,58 @@ Uses modular listener pattern (inspired by [bolt-python-assistant-template](http
    ↓
 2. Worker clones repo to workdir/task_id/
    ↓
-3. Worker creates branch "dogwalker/1234567890-123456"
+3. Worker creates branch "bryans-coregi/add-rate-limiting-to-api-login"
    ↓
-4. Worker initializes Aider with Claude Sonnet 4.5
+4. Worker initializes Aider to generate implementation plan
    ↓
-5. Aider analyzes codebase (uses repo map for context)
+5. Aider analyzes codebase and creates plan:
+   - What architecture will be affected
+   - Which files will be modified
+   - Implementation approach
    ↓
-6. Aider searches for relevant files (e.g., api/login.py)
+6. Worker pushes empty branch to GitHub
    ↓
-7. Aider edits files to add rate limiting
+7. Worker creates DRAFT PR with plan in description
    ↓
-8. Aider auto-commits changes
+8. Worker posts to Slack: "📋 Coregi created draft PR with plan [link]"
    ↓
-9. Worker pushes branch to GitHub
+9. Worker runs Aider to implement changes
    ↓
-10. Worker creates PR via GitHub API
+10. Aider searches for relevant files (e.g., api/login.py)
     ↓
-11. Worker posts to Slack: "✅ PR ready: https://github.com/..."
+11. Aider edits files to add rate limiting
     ↓
-12. Worker cleans up workdir/task_id/
+12. Aider auto-commits changes
+    ↓
+13. Worker runs self-review phase
+    ↓
+14. Aider critiques code quality, security, edge cases
+    ↓
+15. Aider makes improvements and commits
+    ↓
+16. Worker runs test writing phase
+    ↓
+17. Aider writes comprehensive tests (happy path, edge cases, errors)
+    ↓
+18. Aider runs tests and verifies they pass
+    ↓
+19. Aider commits tests
+    ↓
+20. Worker pushes all changes to branch
+    ↓
+21. Worker updates PR description with:
+    - Requester (hyperlinked to Slack profile)
+    - Request timestamp (exact Pacific Time)
+    - Implementation plan
+    - Files modified
+    - Test status
+    - Duration
+    ↓
+22. Worker marks PR as "Ready for Review" (exits draft state)
+    ↓
+23. Worker posts to Slack: "✅ Work complete! PR ready for review [link]"
+    ↓
+24. Worker cleans up workdir/task_id/
 ```
 
 ## Context Management

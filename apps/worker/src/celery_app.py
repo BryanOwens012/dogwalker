@@ -6,6 +6,8 @@ from pathlib import Path
 
 # Add shared module to path
 sys.path.insert(0, str(Path(__file__).parent.parent.parent / "shared" / "src"))
+# Add worker src directory to path (for worker_tasks import)
+sys.path.insert(0, str(Path(__file__).parent))
 
 from config import config
 
@@ -14,10 +16,8 @@ app = Celery(
     "dogwalker",
     broker=config.redis_url,
     backend=config.redis_url,
+    include=["worker_tasks"]  # Tell Celery where to find tasks
 )
-
-# Import tasks (this registers them with Celery)
-from worker_tasks import run_coding_task
 
 # Celery configuration
 app.conf.update(

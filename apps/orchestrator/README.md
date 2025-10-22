@@ -33,9 +33,12 @@ Following Slack Bolt best practices (inspired by bolt-python-assistant-template)
 
 **`@app_mention`** - Handle @dogwalker mentions
 - Extracts task description from message
+- Fetches requester information (display name, Slack profile URL)
 - Selects available dog
-- Creates Celery task
-- Posts acknowledgment to Slack thread
+- Generates descriptive branch name (e.g., `bryans-coregi/add-rate-limiting`)
+- Records start time for accurate duration tracking
+- Creates Celery task with full metadata
+- Posts acknowledgment to Slack thread (showing dog display name)
 
 ## Running Locally
 
@@ -104,11 +107,19 @@ celery -A src.celery_app worker --loglevel=info
 @dogwalker add a comment to README.md saying "hello from dogwalker"
 ```
 
-Expected flow:
-1. Bot responds: "🐕 Bryans-Coregi is taking this task!"
-2. Worker picks up task
-3. Worker clones repo, runs Aider, creates PR
-4. Bot posts: "✅ PR ready: [link]"
+Expected flow (3 messages in Slack thread):
+1. Bot responds: "🐕 Coregi is taking this task!"
+2. Worker picks up task, generates plan, creates draft PR
+3. Bot posts: "📋 Coregi created a draft PR with the plan [link + plan preview]"
+4. Worker implements changes, runs self-review, writes tests
+5. Worker marks PR as ready for review
+6. Bot posts: "✅ Work complete! PR ready for review [link]"
+
+Check GitHub for:
+- Branch: `bryans-coregi/add-a-comment-to-readme-md-saying-hello`
+- PR initially in "Draft" state with plan
+- PR marked as "Ready for review" when complete
+- PR description includes requester, timestamp, plan, files, tests, duration
 
 ## Architecture
 

@@ -28,9 +28,13 @@ def run_coding_task(
     task_description: str,
     branch_name: str,
     dog_name: str,
+    dog_display_name: str,
     dog_email: str,
     thread_ts: str,
-    channel_id: str
+    channel_id: str,
+    requester_name: str,
+    requester_profile_url: str,
+    start_time: float,
 ) -> dict[str, Any]:
     """
     Execute a coding task with a dog agent.
@@ -38,18 +42,23 @@ def run_coding_task(
     This task is picked up by a Celery worker (dog) which:
     1. Clones the repo and checks out a new branch
     2. Runs Aider to make code changes
-    3. Commits and pushes the branch
-    4. Creates a PR
-    5. Posts update to Slack thread
+    3. Runs self-review and makes improvements
+    4. Commits and pushes the branch
+    5. Creates a PR with detailed description
+    6. Posts update to Slack thread
 
     Args:
         task_id: Unique task identifier
         task_description: What code changes to make
         branch_name: Git branch name for the changes
-        dog_name: Dog's GitHub username
+        dog_name: Dog's full GitHub username (e.g., "Bryans-Coregi")
+        dog_display_name: Dog's display name (e.g., "Coregi")
         dog_email: Dog's email for commits
         thread_ts: Slack thread timestamp for updates
         channel_id: Slack channel ID
+        requester_name: Display name of person who requested the change
+        requester_profile_url: Slack profile URL of the requester
+        start_time: Unix timestamp when request was made
 
     Returns:
         Dictionary with task results and metadata
