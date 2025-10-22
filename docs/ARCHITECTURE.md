@@ -62,13 +62,23 @@ Dogwalker is a multi-agent AI coding system that automates the path from Slack f
 - Celery (task queue client)
 
 **Key Files:**
-- `bot.py` - Slack event handlers, receives @mentions
-- `tasks.py` - Celery task definitions (contract)
-- `dog_selector.py` - Assigns tasks to available dogs
+- `bot.py` - Main entry point, initialization
 - `celery_app.py` - Celery configuration
+- `dog_selector.py` - Assigns tasks to available dogs
+- `tasks.py` - Celery task definitions (contract)
+- `listeners/` - Modular event handlers
+  - `listeners/events/app_mentioned.py` - @mention handler
+  - `listeners/__init__.py` - Register all listeners
+
+**Architecture Pattern:**
+Uses modular listener pattern (inspired by [bolt-python-assistant-template](https://github.com/slack-samples/bolt-python-assistant-template)):
+- Clean separation: Each event type in its own file
+- Easy extensibility: Add new listeners without touching core code
+- Type-safe: Proper type hints on all handlers
+- Testable: Each handler independently testable
 
 **Responsibilities:**
-1. Listen for `@dogwalker` mentions via Slack
+1. Listen for `@dogwalker` mentions via Slack Socket Mode
 2. Parse task description from message
 3. Select least-busy dog (MVP: round-robin)
 4. Create Celery task with task metadata

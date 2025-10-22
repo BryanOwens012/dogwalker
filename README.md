@@ -94,10 +94,15 @@ dogwalker/
 ├── apps/
 │   ├── orchestrator/         # Slack bot + Celery task queue
 │   │   ├── src/
-│   │   │   ├── bot.py       # Slack event handlers
-│   │   │   ├── tasks.py     # Celery task definitions
-│   │   │   ├── dog_selector.py  # Dog assignment logic
-│   │   │   └── celery_app.py    # Celery configuration
+│   │   │   ├── bot.py            # Main entry point
+│   │   │   ├── celery_app.py     # Celery configuration
+│   │   │   ├── dog_selector.py   # Dog assignment logic
+│   │   │   ├── tasks.py          # Celery task definitions
+│   │   │   └── listeners/        # Event listeners (modular)
+│   │   │       ├── __init__.py
+│   │   │       └── events/
+│   │   │           ├── __init__.py
+│   │   │           └── app_mentioned.py  # @mention handler
 │   │   ├── requirements.txt
 │   │   ├── railway.json
 │   │   └── README.md
@@ -145,6 +150,28 @@ dogwalker/
 ```
 
 ## Key Implementation Details
+
+### Modular Listener Pattern
+
+The orchestrator uses a modular listener pattern inspired by [Slack's bolt-python-assistant-template](https://github.com/slack-samples/bolt-python-assistant-template):
+
+- **Separation of concerns**: Each event type has its own file
+- **Easy extensibility**: Add new listeners without touching core code
+- **Clean entry point**: `bot.py` is just initialization and startup
+- **Type-safe handlers**: Proper type hints on all functions
+
+Example structure:
+```python
+# listeners/events/app_mentioned.py
+def handle_app_mention(event: dict, say: Say, client: WebClient, logger: Logger):
+    # Handle @dogwalker mentions
+
+# listeners/events/__init__.py
+def register(app: App):
+    app.event("app_mention")(handle_app_mention)
+```
+
+This makes it trivial to add new event handlers, action handlers (buttons), or Slack interactions.
 
 ### Aider Integration
 Aider provides the code editing primitives. It handles:
