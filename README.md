@@ -1,4 +1,4 @@
-# Dogwalker - Slack Bot that Turns Feature Requests into Production-Ready Pull Requests
+# Dogwalker - Slack Bot that Turns Feature Requests into Pull Requests
 
 Multiple AI agents ("dogs") work in parallel, write tests, and deliver code ready for human review.
 
@@ -140,7 +140,8 @@ See `.env.example` for full configuration options.
 
 ## Limitations
 
-- Dogs aren't able to handle more than 200k tokens of context. Plan requests accordingly.
+- The quality of the generated code is nondeterministic. Always review before merging. It might take a few tries to get it right.
+- Dogs aren't able to handle more than 200k tokens of context. Plan requests accordingly. E.g., commit large files separately.
 - When a dog crashes, it loses all its state and must restart with a clean slate.
 
 ## Contributing

@@ -1144,16 +1144,45 @@ Co-Authored-By: Claude <noreply@anthropic.com>"""
 
         logger.info("Capturing after screenshots to compare with before...")
 
-        # Restart dev server to ensure latest code is running
-        logger.info("Stopping dev server...")
-        self.screenshot_tools.stop_dev_server()
+        # Check if dev server is still running from "before" screenshots
+        if self.screenshot_tools.dev_server_process:
+            logger.info("Dev server still running from before screenshots - checking if responsive...")
 
-        logger.info("Restarting dev server with new code...")
-        if not self.screenshot_tools.start_dev_server():
-            logger.error("❌ Failed to restart dev server - skipping after screenshots")
-            return []
+            # Give dev server time to hot-reload changes (most dev servers auto-reload)
+            import time
+            logger.info("Waiting 5 seconds for dev server hot-reload to complete...")
+            time.sleep(5)
 
-        logger.info("✅ Dev server restarted with new code")
+            # Verify server is still responsive
+            try:
+                import requests
+                test_url = f"http://localhost:{self.screenshot_tools.dev_server_port}"
+                response = requests.get(test_url, timeout=5)
+                if response.status_code < 500:
+                    logger.info("✅ Dev server is responsive - using existing server with hot-reloaded code")
+                else:
+                    logger.warning(f"Dev server returned {response.status_code} - will restart")
+                    raise Exception("Server not healthy")
+            except Exception as e:
+                logger.warning(f"Dev server not responding: {e} - will restart")
+                self.screenshot_tools.stop_dev_server()
+
+                # Wait for port to be released
+                logger.info("Waiting 3 seconds for port to be released...")
+                time.sleep(3)
+
+                logger.info("Restarting dev server with new code...")
+                if not self.screenshot_tools.start_dev_server():
+                    logger.error("❌ Failed to restart dev server - skipping after screenshots")
+                    return []
+                logger.info("✅ Dev server restarted successfully")
+        else:
+            # Server not running - start fresh
+            logger.info("Dev server not running - starting fresh...")
+            if not self.screenshot_tools.start_dev_server():
+                logger.error("❌ Failed to start dev server - skipping after screenshots")
+                return []
+            logger.info("✅ Dev server started successfully")
 
         # Capture same URLs as before
         urls = [shot['url'] for shot in before_screenshots]

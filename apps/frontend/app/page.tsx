@@ -37,9 +37,9 @@ const HomePage = () => {
                 </span>
               </h1>
               <p className="mx-auto mb-10 max-w-3xl text-lg text-muted-foreground md:text-xl">
-                Slack bot that turns feature requests into production-ready pull
-                requests. Multiple AI agents work in parallel, write tests, and
-                deliver code ready for human review.
+                Slack bot that turns feature requests into pull requests.
+                Multiple AI agents work in parallel, write tests, and deliver
+                code ready for human review.
               </p>
               <div className="flex justify-center">
                 <Link
@@ -273,8 +273,7 @@ const HomePage = () => {
                 <span>Dogwalker</span>
               </div>
               <p className="text-muted-foreground">
-                Slack bot that turns feature requests into production-ready pull
-                requests
+                Slack bot that turns feature requests into pull requests
               </p>
             </div>
             <div className="flex flex-col gap-4 md:flex-row md:gap-8">

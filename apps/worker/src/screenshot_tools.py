@@ -147,6 +147,7 @@ class ScreenshotTools:
 
             # Wait for server to be ready
             start_time = time.time()
+            last_check = start_time
             while time.time() - start_time < timeout:
                 try:
                     import requests
@@ -173,9 +174,33 @@ class ScreenshotTools:
 
                     return False
 
+                # Log progress every 10 seconds
+                current_time = time.time()
+                if current_time - last_check >= 10:
+                    elapsed = int(current_time - start_time)
+                    logger.info(f"Still waiting for dev server... ({elapsed}s elapsed)")
+                    last_check = current_time
+
                 time.sleep(2)
 
-            logger.warning(f"Dev server did not become ready within {timeout}s")
+            # Timeout reached - dev server process is running but not responding
+            logger.warning(f"❌ Dev server did not become ready within {timeout}s")
+            logger.error("Dev server process is running but not responding to HTTP requests")
+            logger.error(f"Possible causes:")
+            logger.error(f"  1. Port {self.dev_server_port} is already in use (EADDRINUSE)")
+            logger.error(f"  2. Dev server encountered errors during startup")
+            logger.error(f"  3. Dev server is waiting for user input")
+            logger.error(f"  4. Code changes introduced errors that prevent server from starting")
+
+            # Kill the non-responsive process
+            if self.dev_server_process and self.dev_server_process.poll() is None:
+                logger.warning("Killing non-responsive dev server process...")
+                try:
+                    self.dev_server_process.kill()
+                    self.dev_server_process.wait(timeout=5)
+                except Exception as e:
+                    logger.error(f"Error killing dev server: {e}")
+
             return False
 
         except Exception as e:
