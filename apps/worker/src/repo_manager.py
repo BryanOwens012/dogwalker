@@ -188,10 +188,20 @@ Co-Authored-By: Claude <noreply@anthropic.com>"""
         Raises:
             subprocess.CalledProcessError: If command fails
         """
-        return subprocess.run(
-            ["git"] + args,
-            cwd=self.work_dir,
-            check=True,
-            capture_output=True,
-            text=True
-        )
+        try:
+            return subprocess.run(
+                ["git"] + args,
+                cwd=self.work_dir,
+                check=True,
+                capture_output=True,
+                text=True
+            )
+        except subprocess.CalledProcessError as e:
+            # Log the actual git error output
+            logger.error(f"❌ Git command failed: git {' '.join(args)}")
+            if e.stdout:
+                logger.error(f"   STDOUT: {e.stdout.strip()}")
+            if e.stderr:
+                logger.error(f"   STDERR: {e.stderr.strip()}")
+            logger.error(f"   Exit code: {e.returncode}")
+            raise

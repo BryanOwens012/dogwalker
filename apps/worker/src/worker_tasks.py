@@ -44,45 +44,9 @@ logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 )
 
-# Fix Pydantic V2.11 deprecation issue in litellm
-# litellm accesses model_fields on instance instead of class
-# This monkey-patch fixes the issue properly instead of suppressing the warning
-def _patch_litellm_pydantic():
-    """Patch litellm to use Pydantic V2.11+ correctly."""
-    try:
-        from litellm.litellm_core_utils import core_helpers
-
-        # Store original function
-        original_convert_to_model_response_object = core_helpers.convert_to_model_response_object
-
-        def patched_convert_to_model_response_object(response_object, model_response_object):
-            """Patched version that accesses model_fields from class, not instance."""
-            # Get expected keys from the MODEL CLASS, not the instance
-            expected_keys = set(type(model_response_object).model_fields.keys()).union({"usage"})
-
-            # Rest of the original logic
-            for key, value in response_object.items():
-                if key in expected_keys:
-                    setattr(model_response_object, key, value)
-
-            return model_response_object
-
-        # Apply the patch
-        core_helpers.convert_to_model_response_object = patched_convert_to_model_response_object
-        logger.info("✅ Applied Pydantic V2.11 compatibility patch to litellm")
-
-    except ImportError:
-        # litellm not installed or different version - no patch needed
-        logger.debug("litellm not found or different structure - skipping patch")
-    except AttributeError:
-        # Function doesn't exist or structure changed - no patch needed
-        logger.debug("litellm function structure different - skipping patch")
-    except Exception as e:
-        # Don't fail startup if patch fails
-        logger.warning(f"Could not patch litellm: {e}")
-
-# Apply the patch at module load time
-_patch_litellm_pydantic()
+# Note: Pydantic V2.11 compatibility issue in litellm was fixed directly in:
+# venv/lib/python3.10/site-packages/litellm/litellm_core_utils/core_helpers.py:200
+# Changed: model_response.model_fields -> type(model_response).model_fields
 
 
 @app.task(
@@ -200,21 +164,28 @@ def run_coding_task(
             import re
             for i, img in enumerate(images):
                 filename = img.get("filename", f"image_{i}.png")
+                mimetype = img.get("mimetype", "image/png")
                 data = img.get("data", "")
 
                 # Sanitize filename: replace spaces and special chars with underscores
-                # Keep extension (.png, .jpg, etc.)
+                # Keep extension (.png, .jpg, .jpeg, .gif, .webp, etc.)
                 name_parts = filename.rsplit('.', 1)
                 if len(name_parts) == 2:
                     name, ext = name_parts
                     # Replace spaces and special characters with underscores
                     name = re.sub(r'[^a-zA-Z0-9_-]', '_', name)
-                    sanitized_filename = f"{name}.{ext}"
+                    # Preserve original extension (lowercase for consistency)
+                    sanitized_filename = f"{name}.{ext.lower()}"
                 else:
-                    # No extension, just sanitize the whole name
-                    sanitized_filename = re.sub(r'[^a-zA-Z0-9_.-]', '_', filename)
+                    # No extension - try to detect from mimetype
+                    sanitized_name = re.sub(r'[^a-zA-Z0-9_-]', '_', filename)
+                    # Extract extension from mimetype (e.g., "image/png" -> "png")
+                    ext = mimetype.split('/')[-1] if '/' in mimetype else 'png'
+                    sanitized_filename = f"{sanitized_name}.{ext}"
 
-                logger.info(f"Sanitized filename: {filename} -> {sanitized_filename}")
+                logger.info(f"📎 Processing image: {filename}")
+                logger.info(f"   MIME type: {mimetype}")
+                logger.info(f"   Sanitized to: {sanitized_filename}")
 
                 # Decode base64 image data
                 try:

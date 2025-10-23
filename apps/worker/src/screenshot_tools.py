@@ -93,7 +93,7 @@ class ScreenshotTools:
 
         return 3000  # Default fallback
 
-    def start_dev_server(self, timeout: int = 60) -> bool:
+    def start_dev_server(self, timeout: int = 120) -> bool:
         """
         Start the development server and wait for it to be ready.
 
@@ -109,6 +109,28 @@ class ScreenshotTools:
             return False
 
         self.dev_server_port = self.detect_dev_server_port(command)
+
+        # Install dependencies if node_modules doesn't exist
+        node_modules = self.repo_path / "node_modules"
+        if not node_modules.exists():
+            logger.info("📦 Installing npm dependencies (node_modules not found)...")
+            try:
+                install_result = subprocess.run(
+                    ["npm", "install"],
+                    cwd=self.repo_path,
+                    capture_output=True,
+                    timeout=180,  # 3 minutes max for npm install
+                )
+                if install_result.returncode != 0:
+                    logger.error(f"❌ npm install failed: {install_result.stderr.decode('utf-8', errors='ignore')[:500]}")
+                    return False
+                logger.info("✅ npm install completed successfully")
+            except subprocess.TimeoutExpired:
+                logger.error("❌ npm install timed out after 3 minutes")
+                return False
+            except Exception as e:
+                logger.error(f"❌ npm install failed: {e}")
+                return False
 
         logger.info(f"Starting dev server: {command}")
 

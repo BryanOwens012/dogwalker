@@ -2,7 +2,6 @@
 
 import logging
 from typing import Optional
-from duckduckgo_search import DDGS
 
 logger = logging.getLogger(__name__)
 
@@ -12,6 +11,13 @@ class SearchTools:
 
     def __init__(self):
         """Initialize SearchTools with DuckDuckGo search."""
+        try:
+            # Try new package name first
+            from ddgs import DDGS
+        except ImportError:
+            # Fallback to old package name
+            from duckduckgo_search import DDGS
+
         self.ddgs = DDGS()
 
     def search(

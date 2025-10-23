@@ -234,34 +234,29 @@ class GitHubClient:
         screenshot_filename: str
     ) -> Optional[str]:
         """
-        Upload an image to GitHub and get a permanent URL.
+        Upload an image to GitHub screenshots branch and get a permanent URL.
 
-        Uploads the image to a dedicated 'dogwalker-screenshots' branch and returns
-        a raw.githubusercontent.com URL that will persist as long as the branch exists.
-        This provides GitHub-hosted URLs without polluting the PR branch.
+        Uploads to a dedicated 'dogwalker-screenshots' branch and returns a
+        GitHub blob URL that works for both public and private repos.
 
         Args:
             image_path: Path to the image file
             screenshot_filename: Filename to use in the screenshots branch
 
         Returns:
-            Permanent GitHub-hosted URL (raw.githubusercontent.com), or None on failure
+            Permanent GitHub blob URL, or None on failure
         """
         try:
             from pathlib import Path
-            import base64
 
             image_file = Path(image_path)
             if not image_file.exists():
                 logger.error(f"Image file not found: {image_path}")
                 return None
 
-            # Read image data
+            # Read image data (PyGithub will handle base64 encoding)
             with open(image_file, 'rb') as f:
                 image_data = f.read()
-
-            # Encode as base64 for GitHub API
-            image_b64 = base64.b64encode(image_data).decode('utf-8')
 
             screenshots_branch = "dogwalker-screenshots"
             screenshot_path = screenshot_filename  # Store in root of screenshots branch
@@ -285,15 +280,17 @@ class GitHubClient:
                     return None
 
             # Upload image to screenshots branch
-            # Check if file already exists
+            # Extract and log extension to verify it's preserved
+            ext = screenshot_filename.rsplit('.', 1)[-1] if '.' in screenshot_filename else 'unknown'
             logger.info(f"📤 Uploading '{screenshot_path}' to branch '{screenshots_branch}'...")
+            logger.info(f"   File extension: .{ext}")
             try:
                 existing_file = self.repo.get_contents(screenshot_path, ref=screenshots_branch)
-                # Update existing file
+                # Update existing file (PyGithub handles base64 encoding internally)
                 result = self.repo.update_file(
                     path=screenshot_path,
                     message=f"Update screenshot: {screenshot_filename}",
-                    content=image_b64,
+                    content=image_data,
                     sha=existing_file.sha,
                     branch=screenshots_branch
                 )
@@ -306,7 +303,7 @@ class GitHubClient:
                         result = self.repo.create_file(
                             path=screenshot_path,
                             message=f"Add screenshot: {screenshot_filename}",
-                            content=image_b64,
+                            content=image_data,
                             branch=screenshots_branch
                         )
                         logger.info(f"✅ Created new screenshot: {screenshot_path} (commit: {result['commit'].sha[:7]})")
@@ -317,12 +314,12 @@ class GitHubClient:
                     logger.error(f"❌ GitHub API error checking file: {e.status} - {e.data}")
                     return None
 
-            # Generate raw.githubusercontent.com URL
-            raw_url = f"https://raw.githubusercontent.com/{self.repo_name}/{screenshots_branch}/{screenshot_path}"
+            # Generate GitHub blob URL with ?raw=true (works for private repos in PR descriptions)
+            blob_url = f"https://github.com/{self.repo_name}/blob/{screenshots_branch}/{screenshot_path}?raw=true"
 
-            logger.info(f"✅ Successfully uploaded image to GitHub: {raw_url}")
-            logger.info(f"🔗 Verify URL is accessible: {raw_url}")
-            return raw_url
+            logger.info(f"✅ Successfully uploaded image to GitHub")
+            logger.info(f"🔗 Blob URL: {blob_url}")
+            return blob_url
 
         except Exception as e:
             logger.exception(f"Failed to upload image to GitHub: {e}")
