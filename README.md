@@ -1,8 +1,19 @@
-# Dogwalker - Multi-Agent AI Coding System
+# Dogwalker - Slack Bot that Turns Feature Requests into Production-Ready Pull Requests
 
-Open-source tool that reads Slack feature requests and creates PR-ready code using multiple AI agents ("dogs") working in parallel.
+Multiple AI agents ("dogs") work in parallel, write tests, and deliver code ready for human review.
 
-**Status:** Self-hosted tool (not deployed anywhere) | **License:** MIT
+Built solo in 2 days using AI-assisted development.
+
+## See It In Action
+
+Here's a real example: A developer asked Dogwalker to clone a UI design in Slack. The AI dog (Coregi) generated a plan, implemented the changes, and created a production-ready PR—all in minutes.
+
+<p align="center">
+  <img src="apps/frontend/public/slack-thread-example.png" alt="Real Slack thread showing Dogwalker in action" width="600">
+</p>
+
+**[View the complete Pull Request from this thread →](https://github.com/BryanOwens012/dog-park/pull/45)**
+
 
 ## How It Works
 
