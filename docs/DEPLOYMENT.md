@@ -66,6 +66,21 @@ cd ../shared
 pip install -r requirements.txt
 ```
 
+**Important:** After installing worker dependencies, install Playwright browsers:
+
+```bash
+# Install Chromium browser for screenshots
+cd apps/worker
+playwright install chromium
+
+# Or install all browsers (Chromium, Firefox, WebKit)
+playwright install
+```
+
+This is required for the web browsing and screenshot features. Playwright uses headless browsers to capture screenshots of websites.
+
+**Railway Note:** Railway automatically installs Playwright browsers during deployment. For local development, you must run `playwright install` manually.
+
 ### 2. Start Redis
 
 ```bash
@@ -231,6 +246,8 @@ Add the dog GitHub account to your target repository:
 3. Add dog account (e.g., `Bryans-Coregi`)
 4. Grant "Write" access
 
+**Note:** The system will automatically create a `dogwalker-screenshots` branch in your repository on first use. This branch stores before/after screenshots with persistent URLs. You don't need to create it manually - it's created automatically when the first frontend task runs.
+
 ## Railway Deployment
 
 ### 1. Create Railway Project
@@ -264,11 +281,16 @@ Railway will:
 2. Root Directory: `/apps/worker`
 3. Name: "worker"
 4. Add same environment variables as orchestrator
-5. Deploy
+5. **Important:** Add build command to install Playwright browsers:
+   - Go to service Settings → Deploy
+   - Build Command: `pip install -r requirements.txt && playwright install chromium`
+6. Deploy
 
 Railway will:
-- Build: `pip install -r requirements.txt`
+- Build: `pip install -r requirements.txt && playwright install chromium`
 - Start: `celery -A src.celery_app worker --loglevel=info`
+
+**Note:** The Playwright browser installation adds ~150MB to the deployment size but is necessary for web screenshot capabilities.
 
 ### 5. Set Environment Variables
 

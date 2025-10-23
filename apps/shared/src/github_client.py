@@ -227,3 +227,103 @@ class GitHubClient:
             Default branch name (e.g., 'main' or 'master')
         """
         return self.repo.default_branch
+
+    def upload_image_to_github(
+        self,
+        image_path: str,
+        screenshot_filename: str
+    ) -> Optional[str]:
+        """
+        Upload an image to GitHub and get a permanent URL.
+
+        Uploads the image to a dedicated 'dogwalker-screenshots' branch and returns
+        a raw.githubusercontent.com URL that will persist as long as the branch exists.
+        This provides GitHub-hosted URLs without polluting the PR branch.
+
+        Args:
+            image_path: Path to the image file
+            screenshot_filename: Filename to use in the screenshots branch
+
+        Returns:
+            Permanent GitHub-hosted URL (raw.githubusercontent.com), or None on failure
+        """
+        try:
+            from pathlib import Path
+            import base64
+
+            image_file = Path(image_path)
+            if not image_file.exists():
+                logger.error(f"Image file not found: {image_path}")
+                return None
+
+            # Read image data
+            with open(image_file, 'rb') as f:
+                image_data = f.read()
+
+            # Encode as base64 for GitHub API
+            image_b64 = base64.b64encode(image_data).decode('utf-8')
+
+            screenshots_branch = "dogwalker-screenshots"
+            screenshot_path = screenshot_filename  # Store in root of screenshots branch
+
+            # Check if screenshots branch exists, create if not
+            try:
+                branch = self.repo.get_branch(screenshots_branch)
+                logger.info(f"✅ Screenshots branch '{screenshots_branch}' exists (SHA: {branch.commit.sha[:7]})")
+            except GithubException as e:
+                # Create screenshots branch from default branch
+                logger.info(f"📝 Creating screenshots branch '{screenshots_branch}' (branch not found)")
+                try:
+                    default_branch = self.repo.get_branch(self.repo.default_branch)
+                    self.repo.create_git_ref(
+                        ref=f"refs/heads/{screenshots_branch}",
+                        sha=default_branch.commit.sha
+                    )
+                    logger.info(f"✅ Created screenshots branch '{screenshots_branch}'")
+                except GithubException as create_error:
+                    logger.error(f"❌ Failed to create screenshots branch: {create_error.status} - {create_error.data}")
+                    return None
+
+            # Upload image to screenshots branch
+            # Check if file already exists
+            logger.info(f"📤 Uploading '{screenshot_path}' to branch '{screenshots_branch}'...")
+            try:
+                existing_file = self.repo.get_contents(screenshot_path, ref=screenshots_branch)
+                # Update existing file
+                result = self.repo.update_file(
+                    path=screenshot_path,
+                    message=f"Update screenshot: {screenshot_filename}",
+                    content=image_b64,
+                    sha=existing_file.sha,
+                    branch=screenshots_branch
+                )
+                logger.info(f"✅ Updated existing screenshot: {screenshot_path} (commit: {result['commit'].sha[:7]})")
+            except GithubException as e:
+                if e.status == 404:
+                    # File doesn't exist, create it
+                    logger.info(f"📝 File doesn't exist, creating new file: {screenshot_path}")
+                    try:
+                        result = self.repo.create_file(
+                            path=screenshot_path,
+                            message=f"Add screenshot: {screenshot_filename}",
+                            content=image_b64,
+                            branch=screenshots_branch
+                        )
+                        logger.info(f"✅ Created new screenshot: {screenshot_path} (commit: {result['commit'].sha[:7]})")
+                    except GithubException as create_error:
+                        logger.error(f"❌ Failed to create file: {create_error.status} - {create_error.data}")
+                        return None
+                else:
+                    logger.error(f"❌ GitHub API error checking file: {e.status} - {e.data}")
+                    return None
+
+            # Generate raw.githubusercontent.com URL
+            raw_url = f"https://raw.githubusercontent.com/{self.repo_name}/{screenshots_branch}/{screenshot_path}"
+
+            logger.info(f"✅ Successfully uploaded image to GitHub: {raw_url}")
+            logger.info(f"🔗 Verify URL is accessible: {raw_url}")
+            return raw_url
+
+        except Exception as e:
+            logger.exception(f"Failed to upload image to GitHub: {e}")
+            return None

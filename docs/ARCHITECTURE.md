@@ -115,6 +115,9 @@ Uses modular listener pattern (inspired by [bolt-python-assistant-template](http
 - `dog.py` - Aider wrapper for code editing
 - `dog_communication.py` - Bi-directional Slack communication helper
 - `repo_manager.py` - Git operations (clone, branch, push)
+- `screenshot_tools.py` - Before/after screenshot capture and GitHub upload
+- `web_tools.py` - Website fetching and screenshots for URL references
+- `search_tools.py` - Proactive internet search using DuckDuckGo
 - `celery_app.py` - Celery worker configuration
 
 **Responsibilities:**
@@ -124,19 +127,21 @@ Uses modular listener pattern (inspired by [bolt-python-assistant-template](http
 4. Generate implementation plan using Aider
 5. Push empty branch and create draft PR with plan
 6. Post draft PR to Slack with plan preview
-7. **Check for human feedback** before implementation
-8. Run Aider to implement changes
-9. **Check for human feedback** after implementation
-10. Run self-review phase for code quality improvements
-11. **Check for human feedback** after self-review
-12. Write comprehensive tests and verify they pass
-13. **Check for human feedback** after testing (final checkpoint)
-14. Commit and push final changes
-15. Collect all thread feedback for PR description
-16. Update PR description with complete details and thread feedback
-17. Mark PR as "Ready for Review" (exit draft state)
-18. Post completion to Slack thread
-19. Clean up ephemeral workspace
+7. **Capture before screenshots** (if frontend task) and upload to GitHub
+8. **Check for human feedback** before implementation
+9. Run Aider to implement changes
+10. **Check for human feedback** after implementation
+11. Run self-review phase for code quality improvements
+12. **Check for human feedback** after self-review
+13. Write comprehensive tests and verify they pass
+14. **Check for human feedback** after testing (final checkpoint)
+15. **Capture after screenshots** (if frontend task) and upload to GitHub
+16. Commit and push final changes
+17. Collect all thread feedback for PR description
+18. Update PR description with complete details, thread feedback, and screenshot comparisons
+19. Mark PR as "Ready for Review" (exit draft state)
+20. Post completion to Slack thread
+21. Clean up ephemeral workspace
 
 ### Shared (apps/shared)
 
@@ -144,8 +149,15 @@ Uses modular listener pattern (inspired by [bolt-python-assistant-template](http
 
 **Key Files:**
 - `config.py` - Environment variable management
-- `github_client.py` - GitHub API wrapper (PRs, branches)
+- `github_client.py` - GitHub API wrapper (PRs, branches, screenshot uploads)
 - `slack_utils.py` - Message formatting helpers
+
+**GitHub Client Capabilities:**
+- Create and update pull requests
+- Check branch existence
+- Upload images to dedicated screenshots branch
+- Generate persistent raw.githubusercontent.com URLs
+- Manage dogwalker-screenshots branch lifecycle
 
 **Benefits:**
 - Single source of truth for config
@@ -408,6 +420,178 @@ The following feedback was provided during implementation:
 - Transparency for PR reviewers
 - Context for why certain decisions were made
 - Audit trail of human involvement
+
+## Screenshot Upload Architecture
+
+**Overview:** For frontend tasks, dogs automatically capture before/after screenshots and upload them to GitHub for persistent hosting.
+
+### GitHub Upload Flow
+
+```
+┌──────────────┐         ┌──────────────┐         ┌──────────────┐
+│  Screenshot  │         │   GitHub     │         │     PR       │
+│   Tools      │         │   Client     │         │ Description  │
+│              │         │   (API)      │         │              │
+└──────┬───────┘         └──────┬───────┘         └──────┬───────┘
+       │                        │                        │
+       │ 1. Capture screenshot  │                        │
+       │    locally (PNG)       │                        │
+       │                        │                        │
+       │ 2. Upload to GitHub    │                        │
+       ├───────────────────────>│                        │
+       │                        │                        │
+       │                        │ 3. Create/update file  │
+       │                        │    on screenshots      │
+       │                        │    branch              │
+       │                        │                        │
+       │ 4. Return GitHub URL   │                        │
+       │<───────────────────────┤                        │
+       │                        │                        │
+       │ 5. Include URL in      │                        │
+       │    PR description      │                        │
+       ├────────────────────────┴───────────────────────>│
+```
+
+### Screenshots Branch Strategy
+
+**Branch Name:** `dogwalker-screenshots`
+
+**Purpose:** Dedicated branch for storing all screenshots across all PRs
+
+**Benefits:**
+- **Persistent URLs** - Screenshots remain accessible even after PRs merge
+- **Centralized Storage** - All screenshots in one place, not scattered across PR branches
+- **No Repo Pollution** - Screenshots don't clutter PR commits or main branch
+- **Free Hosting** - GitHub provides free storage and raw.githubusercontent.com URLs
+
+**File Organization:**
+```
+dogwalker-screenshots branch:
+├── before_home.png
+├── after_home.png
+├── before_about.png
+├── after_about.png
+└── (other screenshots...)
+```
+
+**URL Format:**
+```
+https://raw.githubusercontent.com/{owner}/{repo}/dogwalker-screenshots/{filename}
+```
+
+### GitHub Contents API Usage
+
+**Create Screenshot Branch:**
+```python
+# One-time setup per repository
+default_branch = repo.get_branch(repo.default_branch)
+repo.create_git_ref(
+    ref="refs/heads/dogwalker-screenshots",
+    sha=default_branch.commit.sha
+)
+```
+
+**Upload Screenshot:**
+```python
+# Read and encode image
+with open(image_path, 'rb') as f:
+    image_data = f.read()
+image_b64 = base64.b64encode(image_data).decode('utf-8')
+
+# Create or update file on screenshots branch
+try:
+    existing = repo.get_contents(filename, ref="dogwalker-screenshots")
+    # Update existing
+    repo.update_file(
+        path=filename,
+        message=f"Update screenshot: {filename}",
+        content=image_b64,
+        sha=existing.sha,
+        branch="dogwalker-screenshots"
+    )
+except GithubException:
+    # Create new
+    repo.create_file(
+        path=filename,
+        message=f"Add screenshot: {filename}",
+        content=image_b64,
+        branch="dogwalker-screenshots"
+    )
+```
+
+**Generate URL:**
+```python
+raw_url = f"https://raw.githubusercontent.com/{owner}/{repo}/dogwalker-screenshots/{filename}"
+```
+
+### Screenshot Workflow
+
+**Before Screenshots:**
+1. Dog generates implementation plan
+2. Checks if task is frontend-related (keywords, file extensions)
+3. If yes, starts dev server (auto-detects command)
+4. Extracts relevant URLs from plan (up to 5 pages)
+5. Captures screenshot of each URL using Playwright
+6. **Uploads each screenshot to GitHub** via Contents API
+7. Stores GitHub URLs for later comparison
+
+**After Screenshots:**
+1. After all code changes and testing complete
+2. Restarts dev server with new code
+3. Captures screenshot of same URLs
+4. **Uploads each screenshot to GitHub** via Contents API
+5. Stores GitHub URLs
+
+**PR Description:**
+```markdown
+### 📸 Visual Changes
+
+**Page: /**
+Before: ![](https://raw.githubusercontent.com/owner/repo/dogwalker-screenshots/before_home.png)
+After: ![](https://raw.githubusercontent.com/owner/repo/dogwalker-screenshots/after_home.png)
+```
+
+### Frontend Task Detection
+
+**Keyword Analysis:**
+- Checks plan for: page, component, ui, frontend, interface, react, vue, angular, tailwind, css, style, button, form, navbar, layout, route, etc.
+
+**File Extension Analysis:**
+- Checks modified files for: .tsx, .jsx, .vue, .svelte, .css, .scss, .sass
+
+**If either matches:** Triggers screenshot workflow
+
+### Dev Server Management
+
+**Auto-Detection:**
+1. Reads package.json "scripts" section
+2. Looks for common script names: dev, start, develop, serve
+3. Falls back to framework-specific commands:
+   - Next.js: `npm run dev` (port 3000)
+   - Vite: `npm run dev` (port 5173)
+   - Create React App: `npm start` (port 3000)
+   - Angular: `npm start` (port 4200)
+   - Vue CLI: `npm run serve` (port 8080)
+
+**Lifecycle:**
+1. Start dev server in background subprocess
+2. Poll for readiness (HTTP requests to localhost)
+3. Wait up to 60 seconds for server to respond
+4. Capture screenshots
+5. Terminate dev server gracefully (SIGTERM)
+6. Force kill if doesn't respond (SIGKILL)
+
+### Error Handling
+
+**Upload Failures:**
+- If GitHub upload fails, falls back to relative paths in PR
+- Logs warning but doesn't fail entire task
+- Screenshots still captured locally for debugging
+
+**Dev Server Failures:**
+- If server won't start, skips screenshot workflow
+- Logs warning and continues with implementation
+- Task succeeds even if screenshots unavailable
 
 ## Context Management
 

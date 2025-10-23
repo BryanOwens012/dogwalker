@@ -94,11 +94,6 @@ class Config:
         return os.getenv("GITHUB_REPO", "")
 
     @property
-    def slack_channel_id(self) -> Optional[str]:
-        """Get Slack channel ID (optional)."""
-        return os.getenv("SLACK_CHANNEL_ID")
-
-    @property
     def dogs(self) -> List[dict]:
         """
         Get list of available dog configurations.

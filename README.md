@@ -98,6 +98,148 @@ Dog: ✅ Work complete! PR ready for review
 
 This enables collaborative development where dogs work autonomously but can incorporate human guidance when needed.
 
+### Web Browsing and Screenshot Capabilities
+
+Dogs can automatically fetch and analyze websites when URLs are included in task descriptions:
+
+- **Automatic URL Detection** - Dogs detect URLs in your task description automatically
+- **Website Screenshots** - Captures full-page screenshots using headless Chromium
+- **Content Extraction** - Extracts page titles, headings, and key text content
+- **Visual Context** - Screenshots provided as context to AI during code generation
+- **Version Controlled** - Screenshots committed to `.dogwalker_web/` directory in branch
+
+**How it works:**
+1. Include a URL in your task description
+2. Dog automatically fetches and screenshots the website
+3. Screenshots and extracted content provided to AI as context
+4. Enables UI replication, design matching, and reference implementation
+
+**Examples:**
+```
+@dogwalker replicate the search interface from https://perplexity.ai
+
+@dogwalker create a landing page similar to https://stripe.com
+
+@dogwalker implement the same navigation style as https://tailwindcss.com
+```
+
+The dog will:
+- Fetch the website and capture a full-page screenshot
+- Extract key design elements (headings, layout structure)
+- Use the screenshot as visual reference during implementation
+- Include screenshots in the PR for review context
+
+**Limits:**
+- Maximum 5 URLs per task (to prevent abuse)
+- 30-second timeout per website
+- Modern JS-heavy sites fully supported (headless browser rendering)
+
+### Proactive Internet Search
+
+Dogs **automatically search the internet** when they need current information, even without explicit URLs:
+
+- **Autonomous Research** - Dogs decide when to search based on task requirements
+- **No API Keys Required** - Uses DuckDuckGo search (free, privacy-focused)
+- **Smart Query Generation** - AI determines optimal search queries automatically
+- **Multiple Searches** - Can perform up to 5 searches per task
+- **Contextual Integration** - Search results integrated into code generation context
+
+**What dogs search for automatically:**
+- Current API documentation and syntax
+- Library compatibility information and breaking changes
+- Code examples and implementation patterns
+- Best practices and recommendations
+- Package versions and changelogs
+- Technical specifications and limits
+
+**How it works:**
+1. Dog analyzes the task and determines if searches would be helpful
+2. Generates 1-5 specific search queries automatically
+3. Performs searches using DuckDuckGo
+4. Integrates search results into implementation context
+5. Uses current information during code generation
+
+**Examples of autonomous behavior:**
+```
+Task: @dogwalker add OpenAI integration
+Dog automatically searches:
+- "OpenAI API GPT-4 Turbo pricing 2025"
+- "OpenAI Python SDK latest version"
+- "OpenAI rate limits API keys"
+
+Task: @dogwalker implement dark mode toggle
+Dog automatically searches:
+- "React dark mode best practices 2025"
+- "Tailwind CSS dark mode implementation"
+- "CSS prefers-color-scheme browser support"
+```
+
+The dog will search proactively **without you asking** when it needs information. You don't need to include search queries or URLs - the dog handles research autonomously.
+
+**Benefits:**
+- Always uses current API syntax and versions
+- Finds up-to-date examples and patterns
+- Verifies compatibility before implementing
+- Discovers breaking changes automatically
+- No outdated assumptions or deprecated code
+
+### Before & After Screenshots
+
+For frontend tasks, dogs **automatically capture before/after screenshots** to visually document changes:
+
+- **Automatic Detection** - Identifies frontend tasks from plan (page, component, UI keywords)
+- **Dev Server Management** - Starts/stops dev server automatically
+- **Smart URL Extraction** - Finds relevant pages from implementation plan
+- **Side-by-Side Comparison** - Shows before/after in PR description
+- **GitHub-Hosted** - Screenshots uploaded to dedicated `dogwalker-screenshots` branch with persistent URLs
+
+**How it works:**
+1. After plan generation, dog checks if task involves frontend changes
+2. If yes, starts dev server (npm run dev, npm start, etc.)
+3. Captures "before" screenshots of relevant pages
+4. **Uploads to GitHub** via Contents API for persistent hosting
+5. Implements code changes
+6. Restarts dev server with new code
+7. Captures "after" screenshots of same pages
+8. **Uploads to GitHub** and includes before/after comparison in PR
+
+**What pages get screenshotted:**
+- Pages mentioned in plan ("/about page", "/dashboard")
+- Routes referenced in code ("route: /profile")
+- Home page (always included)
+- Up to 5 pages per task
+
+**Example PR output:**
+```
+### 📸 Visual Changes
+
+**Page: /**
+Before: ![](https://raw.githubusercontent.com/owner/repo/dogwalker-screenshots/before_home.png)
+After: ![](https://raw.githubusercontent.com/owner/repo/dogwalker-screenshots/after_home.png)
+
+**Page: /about**
+Before: ![](https://raw.githubusercontent.com/owner/repo/dogwalker-screenshots/before_about.png)
+After: ![](https://raw.githubusercontent.com/owner/repo/dogwalker-screenshots/after_about.png)
+```
+
+**Supported frameworks:**
+- Next.js (auto-detected via next.config.js)
+- Vite (auto-detected via vite.config.js)
+- Create React App (npm start)
+- Angular (ng serve)
+- Vue CLI (npm run serve)
+- Any project with "dev" or "start" script in package.json
+
+**Benefits:**
+- Visual proof of changes for reviewers
+- Catch unintended visual regressions
+- Document UI improvements clearly
+- No manual screenshot workflow needed
+- Automatic server start/stop
+- **Persistent URLs** - Screenshots remain accessible even after PR merges
+- **GitHub-hosted** - Free storage on raw.githubusercontent.com
+- **No repo pollution** - Screenshots stored on separate branch, not in PR commits
+
 ## Architecture
 
 ### Components
@@ -139,6 +281,9 @@ This enables collaborative development where dogs work autonomously but can inco
 - PyGithub - GitHub API client
 - python-dotenv - Environment variable management
 - anthropic - Claude API (used by Aider)
+- playwright - Web automation and screenshots
+- beautifulsoup4 - HTML parsing and content extraction
+- duckduckgo-search - Internet search for proactive research
 
 ### Models
 - **Dogwalker (orchestration):** Claude Sonnet 4.5 or cheaper (Haiku, GPT-4o-mini)
@@ -414,6 +559,9 @@ DOGS='[
 - ✅ **Parallel processing** - Multiple dogs work simultaneously
 - ✅ **Task cancellation** - Cancel in-progress tasks with Slack button, graceful shutdown with partial PR
 - ✅ **Bi-directional communication** - Dogs can respond to feedback and ask clarifying questions via Slack
+- ✅ **Web browsing** - Automatic URL detection, website screenshots, and content extraction for visual-driven development
+- ✅ **Proactive internet search** - Dogs autonomously search for current docs, examples, and best practices when needed
+- ✅ **Before/after screenshots** - Automatic visual documentation of frontend changes with dev server management
 
 ## Features to Skip Initially
 - AI code review (human review only)
