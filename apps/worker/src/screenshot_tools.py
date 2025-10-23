@@ -334,10 +334,21 @@ class ScreenshotTools:
         route_patterns = re.findall(r'["\'](/[\w/-]*)["\']', plan)
         urls.extend(route_patterns)
 
-        # Look for page references: "home page", "about page", etc.
+        # Blacklist of words that are NOT routes (common false positives)
+        # These are descriptive words that often appear before "page" in plans
+        blacklist = {
+            'home', 'main', 'index',  # Already handled specially
+            'existing', 'target', 'following', 'new', 'current', 'previous',
+            'next', 'same', 'landing', 'error', 'loading', 'default',
+            'custom', 'dynamic', 'static', 'single', 'multiple', 'first',
+            'last', 'initial', 'final', 'base', 'parent', 'child', 'root',
+        }
+
+        # Look for page references: "about page", "dashboard page", etc.
         page_refs = re.findall(r'(\w+)\s+page', plan.lower())
         for page in page_refs:
-            if page not in ['home', 'main', 'index']:
+            # Only add if not in blacklist and looks like a real route name
+            if page not in blacklist and len(page) > 2:  # Avoid single/two letter matches
                 urls.append(f"/{page}")
 
         # Remove duplicates and sort
