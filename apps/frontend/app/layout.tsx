@@ -12,7 +12,7 @@ export const viewport: Viewport = {
 export const metadata: Metadata = {
   title: {
     default:
-      "Dogwalker - Slack bot that turns feature requests into production-ready pull requests",
+      "🐕 Dogwalker - Slack bot that turns feature requests into production-ready pull requests",
     template: "%s | Dogwalker",
   },
   description:
