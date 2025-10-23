@@ -43,8 +43,9 @@ class SearchTools:
         logger.info(f"Searching internet for: {query}")
 
         try:
+            # Newer duckduckgo_search API uses 'query' as first positional argument
             results = list(self.ddgs.text(
-                keywords=query,
+                query,
                 region=region,
                 max_results=max_results
             ))
@@ -77,8 +78,9 @@ class SearchTools:
         logger.info(f"Searching news for: {query}")
 
         try:
+            # Newer duckduckgo_search API uses 'query' as first positional argument
             results = list(self.ddgs.news(
-                keywords=query,
+                query,
                 region=region,
                 max_results=max_results
             ))
