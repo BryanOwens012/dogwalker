@@ -324,3 +324,77 @@ class GitHubClient:
         except Exception as e:
             logger.exception(f"Failed to upload image to GitHub: {e}")
             return None
+
+    def get_pending_invitations(self) -> list[dict]:
+        """
+        Get pending repository collaboration invitations for the authenticated user.
+
+        Returns:
+            List of invitation dictionaries with:
+                - id: Invitation ID (used for acceptance)
+                - repository: Dict with full_name, html_url
+                - inviter: Dict with login, html_url
+                - created_at: Invitation timestamp
+        """
+        try:
+            import requests
+
+            headers = {"Authorization": f"token {self.token}"}
+            response = requests.get(
+                "https://api.github.com/user/repository_invitations",
+                headers=headers
+            )
+
+            if response.status_code == 200:
+                invitations = response.json()
+                logger.debug(f"Found {len(invitations)} pending invitation(s)")
+                return invitations
+            elif response.status_code == 401:
+                logger.error("Authentication failed - check GitHub token permissions")
+                return []
+            elif response.status_code == 403:
+                logger.error("Rate limit exceeded or insufficient permissions")
+                return []
+            else:
+                logger.error(f"GitHub API error: {response.status_code} - {response.text}")
+                return []
+
+        except Exception as e:
+            logger.exception(f"Failed to get pending invitations: {e}")
+            return []
+
+    def accept_invitation(self, invitation_id: int) -> bool:
+        """
+        Accept a repository collaboration invitation.
+
+        Args:
+            invitation_id: The invitation ID to accept
+
+        Returns:
+            True if invitation was accepted successfully, False otherwise
+        """
+        try:
+            import requests
+
+            headers = {"Authorization": f"token {self.token}"}
+            response = requests.patch(
+                f"https://api.github.com/user/repository_invitations/{invitation_id}",
+                headers=headers
+            )
+
+            if response.status_code == 204:
+                logger.info(f"Successfully accepted invitation {invitation_id}")
+                return True
+            elif response.status_code == 404:
+                logger.error(f"Invitation {invitation_id} not found or already accepted")
+                return False
+            elif response.status_code == 403:
+                logger.error(f"Permission denied or rate limit exceeded for invitation {invitation_id}")
+                return False
+            else:
+                logger.error(f"Failed to accept invitation {invitation_id}: {response.status_code} - {response.text}")
+                return False
+
+        except Exception as e:
+            logger.exception(f"Failed to accept invitation {invitation_id}: {e}")
+            return False

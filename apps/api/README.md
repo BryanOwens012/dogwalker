@@ -31,24 +31,26 @@ This directory is a placeholder for future HTTP API and web dashboard.
 - **Frontend:** React + Next.js (if dashboard needed)
 - **Auth:** GitHub OAuth or API keys
 
-## MVP Approach
+## Current Status
 
-For initial MVP (Weeks 1-3), use Slack bot only:
-- Slack provides UI for free
-- No need to build auth/frontend
-- Faster to ship
+Initial implementation focuses on Slack bot:
+- Slack provides built-in UI and authentication
+- Faster to ship and validate core functionality
+- No need to build custom frontend initially
 
-Add API later when:
-- Have paying customers needing programmatic access
-- Want to support non-Slack workflows
-- Need public-facing task monitoring
+API will be added when:
+- Community requests programmatic access
+- Users want to support non-Slack workflows (Discord, Teams, etc.)
+- Need for public-facing task monitoring emerges
 
-## Development Timeline
+## Development Roadmap
 
-- **Week 1-3:** MVP with Slack only (skip API)
-- **Week 4-6:** If traction, add basic HTTP endpoints
-- **Month 2-3:** Add web dashboard if needed
-- **Month 3+:** Full-featured API based on customer needs
+- **Phase 1 (Current):** Slack-only interface
+- **Phase 2:** Basic HTTP endpoints for task management
+- **Phase 3:** Web dashboard for monitoring and analytics
+- **Phase 4:** Full REST API with webhook support
+
+Community contributions welcome at any phase!
 
 ## Quick Start (Future)
 
@@ -65,6 +67,7 @@ open http://localhost:8000/docs
 
 ## Notes
 
-- Don't build this until you have validated demand
-- Slack bot is sufficient for MVP
-- Focus on core value (code generation quality) first
+- Slack bot is sufficient for current needs
+- API will be built based on community feedback and use cases
+- Focus remains on core value: high-quality code generation
+- Contributions welcome - if you need API features, please open an issue or PR!

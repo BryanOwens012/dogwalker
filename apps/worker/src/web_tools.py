@@ -158,41 +158,71 @@ class WebTools:
             html: HTML content
 
         Returns:
-            Formatted text with headings and key elements
+            Formatted text with headings and key elements (limited to ~2000 chars max)
         """
         soup = BeautifulSoup(html, 'html.parser')
 
-        # Remove script and style elements
-        for script in soup(["script", "style", "nav", "footer"]):
+        # Remove script, style, nav, footer, and other non-essential elements
+        for script in soup(["script", "style", "nav", "footer", "header", "aside", "form", "iframe"]):
             script.decompose()
 
-        # Extract headings
+        # Special handling for GitHub pages - remove UI chrome
+        # GitHub has tons of UI elements that aren't useful for context
+        for element in soup.select('.js-navigation-container, .file-navigation, .breadcrumb, .hx_rsm-trigger'):
+            element.decompose()
+
+        # Extract headings (limit to first 10 to prevent massive TOCs)
         headings = []
-        for i in range(1, 7):  # h1 through h6
+        heading_count = 0
+        for i in range(1, 4):  # Only h1-h3 (skip h4-h6 for brevity)
             for heading in soup.find_all(f'h{i}'):
                 text = heading.get_text(strip=True)
-                if text:
+                if text and heading_count < 10:
                     headings.append(f"{'#' * i} {text}")
+                    heading_count += 1
 
-        # Extract main content (limit to first 1000 characters)
-        body = soup.find('body')
-        if body:
-            text = body.get_text(separator=' ', strip=True)
-            # Collapse multiple spaces
+        # Extract main content - be very aggressive about limiting
+        # Look for main content areas first
+        main_content = soup.find('main') or soup.find('article') or soup.find('body')
+
+        if main_content:
+            # For GitHub repos, try to extract just the README
+            readme = main_content.find('article', class_='markdown-body')
+            if readme:
+                text = readme.get_text(separator=' ', strip=True)
+            else:
+                text = main_content.get_text(separator=' ', strip=True)
+
+            # Collapse multiple spaces and newlines
             text = re.sub(r'\s+', ' ', text)
-            # Limit length
-            text = text[:1000] + '...' if len(text) > 1000 else text
+
+            # Aggressive truncation to prevent token overflow
+            # Limit to 2000 chars max (roughly 500-600 tokens)
+            MAX_CHARS = 2000
+            if len(text) > MAX_CHARS:
+                text = text[:MAX_CHARS] + '... [content truncated for brevity]'
         else:
             text = ""
 
         # Combine headings and content
-        result = "\n".join(headings)
-        if headings and text:
-            result += f"\n\nContent preview:\n{text}"
+        heading_text = "\n".join(headings[:10])  # Max 10 headings
+
+        # Build result with total length check
+        if heading_text and text:
+            result = f"{heading_text}\n\nContent preview:\n{text}"
         elif text:
             result = f"Content preview:\n{text}"
+        elif heading_text:
+            result = heading_text
+        else:
+            result = "No text content extracted"
 
-        return result if result else "No text content extracted"
+        # Final safety check - ensure we never return more than 3000 chars
+        if len(result) > 3000:
+            result = result[:3000] + '... [truncated]'
+            logger.warning(f"Extracted content was very large, truncated to 3000 chars")
+
+        return result
 
     def fetch_multiple_urls(
         self,
@@ -237,13 +267,13 @@ class WebTools:
             results: List of result dictionaries from fetch_and_screenshot
 
         Returns:
-            Formatted text for inclusion in AI prompts
+            Formatted text for inclusion in AI prompts (limited to prevent token overflow)
         """
         if not results:
             return ""
 
         context_parts = ["CONTEXT - Referenced Websites:"]
-        context_parts.append("The following websites were fetched and analyzed:")
+        context_parts.append("The following websites were fetched and analyzed (screenshots available):")
         context_parts.append("")
 
         for i, result in enumerate(results, 1):
@@ -252,19 +282,26 @@ class WebTools:
                 context_parts.append(f"   Title: {result['page_title']}")
                 context_parts.append(f"   Screenshot: {Path(result['screenshot_path']).name}")
 
-                # Include text content (truncated)
-                text_preview = result['text_content'][:300]
-                if len(result['text_content']) > 300:
-                    text_preview += "..."
-                context_parts.append(f"   Content: {text_preview}")
+                # Include minimal text content (very truncated to prevent token overflow)
+                # Limit to 200 chars per URL to keep total context manageable
+                text_preview = result['text_content'][:200]
+                if len(result['text_content']) > 200:
+                    text_preview += "... [see screenshot for full content]"
+                context_parts.append(f"   Summary: {text_preview}")
                 context_parts.append("")
             else:
                 context_parts.append(f"{i}. {result['url']} - FAILED: {result['error']}")
                 context_parts.append("")
 
-        context_parts.append("Screenshots are available in .dogwalker_web/ directory for visual reference.")
+        context_parts.append("Note: Screenshots contain full visual context. Use them for detailed reference.")
 
-        return "\n".join(context_parts)
+        final_context = "\n".join(context_parts)
+
+        # Safety check - warn if context is getting large
+        if len(final_context) > 5000:
+            logger.warning(f"Web context is large ({len(final_context)} chars), may impact token usage")
+
+        return final_context
 
     def get_screenshot_paths(self, results: list[dict[str, str]]) -> list[str]:
         """

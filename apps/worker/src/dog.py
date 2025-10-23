@@ -25,7 +25,7 @@ class Dog:
         self,
         repo_path: Path,
         model_name: str = "anthropic/claude-sonnet-4-20250514",  # Aider requires provider prefix
-        map_tokens: int = 1024,
+        map_tokens: int = 512,  # Reduced from 1024 to leave headroom for web/search context
         communication: Optional[any] = None,  # DogCommunication instance for bi-directional Slack
         search_tools: Optional[any] = None,  # SearchTools instance for proactive web searching
         screenshot_tools: Optional[any] = None  # ScreenshotTools instance for before/after screenshots
@@ -36,7 +36,7 @@ class Dog:
         Args:
             repo_path: Path to git repository
             model_name: Claude model to use (default: Sonnet 4.5)
-            map_tokens: Tokens for repo map context (default: 1024)
+            map_tokens: Tokens for repo map context (default: 512, reduced to prevent context overflow)
             communication: DogCommunication instance for Slack interaction (optional)
             search_tools: SearchTools instance for internet searching (optional)
             screenshot_tools: ScreenshotTools instance for visual documentation (optional)

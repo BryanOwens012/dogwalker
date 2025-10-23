@@ -1,666 +1,157 @@
 # Dogwalker - Multi-Agent AI Coding System
 
-## Project Overview
-Dogwalker is an autonomous coding system that reads customer feature requests from Slack and automates code generation all the way to PR-ready state. The system uses multiple AI "dogs" (agents) orchestrated by a "Dogwalker" (PM/coordinator) to handle coding tasks in parallel.
+Open-source tool that reads Slack feature requests and creates PR-ready code using multiple AI agents ("dogs") working in parallel.
 
-**Domain:** dogwalker.dev (purchased)
-**Current Status:** Pre-MVP, closed-source
-**Timeline:** 3-4 weeks to working MVP
-**Decision Point:** Month 3-4 - evaluate open-sourcing vs. staying closed based on traction
+**Status:** Self-hosted tool (not deployed anywhere) | **License:** MIT
 
 ## How It Works
 
-Dogwalker automates the entire software development workflow from task description to production-ready pull request:
+1. Mention `@dogwalker add rate limiting to /api/login` in Slack
+2. AI creates a draft PR with implementation plan
+3. AI writes code, self-reviews, and adds tests
+4. PR marked ready for human review (4-10 minutes total)
 
-1. **Request** - You mention `@dogwalker` in Slack with a task description
-   - Example: `@dogwalker add rate limiting to the login endpoint`
+**Key features:** Multiple dogs working in parallel, bi-directional communication (reply to give feedback), web browsing (include URLs in tasks), automatic before/after screenshots for UI changes.
 
-2. **Planning** - AI generates an implementation plan
-   - Creates a date-prefixed branch (`bryans-coregi/2025-10-21-add-rate-limiting`)
-   - Generates concise PR title and structured plan
-   - Posts draft PR to GitHub with the plan for early human review
+## About Self-Hosting
 
-3. **Implementation** - AI writes the code using Aider + Claude Sonnet 4.5
-   - Explores codebase and identifies relevant files
-   - Makes code changes with bite-sized commits (≤500 LOC each)
-   - Follows project patterns and coding standards
+When you self-host Dogwalker, **you create your own Slack bot** in your workspace. This is simpler than it sounds:
 
-4. **Quality Assurance** - Three-phase review process
-   - **Self-review**: AI critiques its own work and makes improvements
-   - **Testing**: Writes comprehensive tests and verifies they pass
-   - **Validation**: Ensures all changes work as expected
+1. Go to https://api.slack.com/apps → "Create New App" → "From an app manifest"
+2. Paste the contents of `apps/slack-bot/manifest.json` (included in this repo)
+3. Install the app to your workspace
+4. Copy the bot tokens to your `.env` file
 
-5. **Delivery** - PR ready for human review
-   - Updates PR with complete details (duration, files changed, critical review areas)
-   - Marks PR as ready for review in GitHub
-   - Posts completion message to Slack thread
+The manifest handles all permissions and settings automatically. You can customize the bot name, avatar, and description to match your team's style. Full instructions are in `.env.example`.
 
-**Total time:** 4-10 minutes for simple tasks
-**Cost:** ~$0.75-$5.00 per task (API usage)
-**Result:** Production-ready PR with tests, ready to merge
+**You control everything:** Your Slack bot, your infrastructure, your data. Built with open-source libraries, so it's fully transparent and customizable.
 
-All updates post to the Slack thread for visibility, so you can track progress without leaving Slack.
+## Getting Started
 
-### Task Cancellation
+### Quick Start
+```bash
+# Prerequisites: Python 3.10+, Redis, Slack workspace, GitHub account, Anthropic API key
 
-You can cancel in-progress tasks at any time:
+git clone <this-repo>
+brew install redis  # or apt-get install redis
+cp .env.example .env  # Fill in your credentials
+pip install -r requirements.txt
+redis-server
 
-- **Cancel Button** - Click the "Cancel Task" button in the initial Slack message
-- **Graceful Shutdown** - The dog finishes its current operation (won't leave work half-done)
-- **Partial PR** - Draft PR is updated with what was completed vs. what was planned
-- **Clear Status** - Cancellation message shows who cancelled and what was done
+# Terminal 1
+cd apps/orchestrator && python src/bot.py
 
-**Checkpoints:**
-- Before planning phase
-- Before implementation
-- Before self-review
-- Before testing
-
-When cancelled, the PR description is updated to show:
-- What was completed before cancellation
-- What was not completed
-- Who cancelled the task and when
-- Time worked before cancellation
-
-This gives you control without losing partial progress.
-
-### Bi-Directional Communication
-
-Dogs can respond to human feedback and ask clarifying questions during task execution:
-
-- **Reply to give feedback** - Post messages in the Slack thread while a dog is working
-- **Automatic acknowledgment** - Dogs react with 👀 emoji to show they've seen your message
-- **Feedback incorporation** - Dogs automatically check for and incorporate your feedback before each major phase
-- **Ask clarifying questions** - Dogs can ask questions and wait for your response (used sparingly, only for critical decisions)
-- **Autonomous by default** - Dogs try to work independently using existing patterns and best practices
-
-**How it works:**
-1. While a dog is working, post a message in the thread with feedback or change requests
-2. The dog checks for messages before each phase (implementation, self-review, testing)
-3. Any feedback is incorporated into the current work automatically
-4. For critical decisions, dogs can ask questions and pause until you respond
-
-**Example:**
-```
-You: @dogwalker add a user profile page
-Dog: 🐕 Coregi is taking this task!
-Dog: 📋 Coregi created a draft PR with the plan...
-
-[You review the plan and see it's missing something]
-You: Also add an avatar upload feature
-
-[Dog sees your message]
-Dog: 🔄 I've received your feedback and will incorporate it into my implementation! 👍
-
-[Dog includes avatar upload in the implementation]
-Dog: ✅ Work complete! PR ready for review
+# Terminal 2
+cd apps/worker && celery -A src.celery_app worker --loglevel=info
 ```
 
-This enables collaborative development where dogs work autonomously but can incorporate human guidance when needed.
+Then mention `@dogwalker` in Slack and watch it work!
 
-### Web Browsing and Screenshot Capabilities
+### Setup Details
+1. **Create Slack app:** Use `apps/slack-bot/manifest.json` at https://api.slack.com/apps
+2. **Configure environment:** Copy `.env.example` to `.env` and fill in:
+   - `ANTHROPIC_API_KEY` - Your Claude API key
+   - `SLACK_BOT_TOKEN` and `SLACK_APP_TOKEN` - From Slack app settings
+   - `GITHUB_REPO` - Your repo (e.g., `yourcompany/yourrepo`)
+   - `DOGS` - JSON array of dog accounts (GitHub username, email, token)
+   - `REDIS_URL` - Usually `redis://localhost:6379`
+3. **Create dog GitHub accounts:** Each dog needs a separate GitHub account with repo access
 
-Dogs can automatically fetch and analyze websites when URLs are included in task descriptions:
+See [DEPLOYMENT.md](docs/DEPLOYMENT.md) for cloud deployment (Railway, Docker, AWS/GCP/Azure).
 
-- **Automatic URL Detection** - Dogs detect URLs in your task description automatically
-- **Website Screenshots** - Captures full-page screenshots using headless Chromium
-- **Content Extraction** - Extracts page titles, headings, and key text content
-- **Visual Context** - Screenshots provided as context to AI during code generation
-- **Version Controlled** - Screenshots committed to `.dogwalker_web/` directory in branch
+## Implemented Features
 
-**How it works:**
-1. Include a URL in your task description
-2. Dog automatically fetches and screenshots the website
-3. Screenshots and extracted content provided to AI as context
-4. Enables UI replication, design matching, and reference implementation
+**Core Workflow**
+- Multi-agent architecture with load balancing (configure 1-N dogs)
+- Draft PR workflow: plan → implement → self-review → test → ready for review
+- Task cancellation with graceful shutdown and partial PR updates
 
-**Examples:**
-```
-@dogwalker replicate the search interface from https://perplexity.ai
+**Communication**
+- Slack integration with real-time thread updates
+- Bi-directional: dogs respond to feedback and ask questions during execution
+- Conversational development workflow
 
-@dogwalker create a landing page similar to https://stripe.com
+**Visual & Research**
+- Before/after screenshots for UI changes (auto-detects frontend tasks)
+- Web browsing: include URLs in tasks for reference implementation
+- Proactive internet search: dogs autonomously research current docs/APIs
 
-@dogwalker implement the same navigation style as https://tailwindcss.com
-```
+**Infrastructure**
+- Socket Mode (no public webhooks, works behind firewalls)
+- Celery + Redis task queue
+- Single repo per deployment
 
-The dog will:
-- Fetch the website and capture a full-page screenshot
-- Extract key design elements (headings, layout structure)
-- Use the screenshot as visual reference during implementation
-- Include screenshots in the PR for review context
+## Future Enhancements
 
-**Limits:**
-- Maximum 5 URLs per task (to prevent abuse)
-- 30-second timeout per website
-- Modern JS-heavy sites fully supported (headless browser rendering)
+- Reaction-based responses (emoji quick decisions)
+- Dog specialization (frontend/backend/tests)
+- Multi-repo support
+- Visual regression testing
+- Platform integrations (Discord, Teams, GitHub Discussions)
 
-### Proactive Internet Search
-
-Dogs **automatically search the internet** when they need current information, even without explicit URLs:
-
-- **Autonomous Research** - Dogs decide when to search based on task requirements
-- **No API Keys Required** - Uses DuckDuckGo search (free, privacy-focused)
-- **Smart Query Generation** - AI determines optimal search queries automatically
-- **Multiple Searches** - Can perform up to 5 searches per task
-- **Contextual Integration** - Search results integrated into code generation context
-
-**What dogs search for automatically:**
-- Current API documentation and syntax
-- Library compatibility information and breaking changes
-- Code examples and implementation patterns
-- Best practices and recommendations
-- Package versions and changelogs
-- Technical specifications and limits
-
-**How it works:**
-1. Dog analyzes the task and determines if searches would be helpful
-2. Generates 1-5 specific search queries automatically
-3. Performs searches using DuckDuckGo
-4. Integrates search results into implementation context
-5. Uses current information during code generation
-
-**Examples of autonomous behavior:**
-```
-Task: @dogwalker add OpenAI integration
-Dog automatically searches:
-- "OpenAI API GPT-4 Turbo pricing 2025"
-- "OpenAI Python SDK latest version"
-- "OpenAI rate limits API keys"
-
-Task: @dogwalker implement dark mode toggle
-Dog automatically searches:
-- "React dark mode best practices 2025"
-- "Tailwind CSS dark mode implementation"
-- "CSS prefers-color-scheme browser support"
-```
-
-The dog will search proactively **without you asking** when it needs information. You don't need to include search queries or URLs - the dog handles research autonomously.
-
-**Benefits:**
-- Always uses current API syntax and versions
-- Finds up-to-date examples and patterns
-- Verifies compatibility before implementing
-- Discovers breaking changes automatically
-- No outdated assumptions or deprecated code
-
-### Before & After Screenshots
-
-For frontend tasks, dogs **automatically capture before/after screenshots** to visually document changes:
-
-- **Automatic Detection** - Identifies frontend tasks from plan (page, component, UI keywords)
-- **Dev Server Management** - Starts/stops dev server automatically
-- **Smart URL Extraction** - Finds relevant pages from implementation plan
-- **Side-by-Side Comparison** - Shows before/after in PR description
-- **GitHub-Hosted** - Screenshots uploaded to dedicated `dogwalker-screenshots` branch with persistent URLs
-
-**How it works:**
-1. After plan generation, dog checks if task involves frontend changes
-2. If yes, starts dev server (npm run dev, npm start, etc.)
-3. Captures "before" screenshots of relevant pages
-4. **Uploads to GitHub** via Contents API for persistent hosting
-5. Implements code changes
-6. Restarts dev server with new code
-7. Captures "after" screenshots of same pages
-8. **Uploads to GitHub** and includes before/after comparison in PR
-
-**What pages get screenshotted:**
-- Pages mentioned in plan ("/about page", "/dashboard")
-- Routes referenced in code ("route: /profile")
-- Home page (always included)
-- Up to 5 pages per task
-
-**Example PR output:**
-```
-### 📸 Visual Changes
-
-**Page: /**
-Before: ![](https://raw.githubusercontent.com/owner/repo/dogwalker-screenshots/before_home.png)
-After: ![](https://raw.githubusercontent.com/owner/repo/dogwalker-screenshots/after_home.png)
-
-**Page: /about**
-Before: ![](https://raw.githubusercontent.com/owner/repo/dogwalker-screenshots/before_about.png)
-After: ![](https://raw.githubusercontent.com/owner/repo/dogwalker-screenshots/after_about.png)
-```
-
-**Supported frameworks:**
-- Next.js (auto-detected via next.config.js)
-- Vite (auto-detected via vite.config.js)
-- Create React App (npm start)
-- Angular (ng serve)
-- Vue CLI (npm run serve)
-- Any project with "dev" or "start" script in package.json
-
-**Benefits:**
-- Visual proof of changes for reviewers
-- Catch unintended visual regressions
-- Document UI improvements clearly
-- No manual screenshot workflow needed
-- Automatic server start/stop
-- **Persistent URLs** - Screenshots remain accessible even after PR merges
-- **GitHub-hosted** - Free storage on raw.githubusercontent.com
-- **No repo pollution** - Screenshots stored on separate branch, not in PR commits
-
-## Architecture
-
-### Components
-1. **Dogwalker** (Orchestrator/PM)
-   - Receives tasks from Slack
-   - Creates branches off main
-   - Assigns tasks to available dogs
-   - Manages task queue
-   - Reports status back to humans
-
-2. **Dogs** (Code Workers)
-   - Individual AI agents that write code
-   - Each has distinct GitHub identity
-   - Work on separate branches
-   - Report completion back to Dogwalker
-
-3. **Infrastructure**
-   - Task queue: Celery + Redis
-   - Code editing: Aider (wraps Claude Sonnet 4.5)
-   - Communication: Slack (for human visibility)
-   - Version control: GitHub
-   - Deployment: Railway (containerized)
-
-### Named Agents
-- **Dogwalker Account:** Bryans-Dogwalker (orchestrator)
-- **Dog Accounts** (configurable via DOGS env var):
-  - Bryans-Coregi (coregi@bryanowens.dev)
-  - Bryans-Bitbull (bitbull@bryanowens.dev)
-  - Bryans-Poodle (poodle@bryanowens.dev)
-  - (Add more dogs as needed for parallel processing)
+See full roadmap in [Future Enhancements](#future-enhancements).
 
 ## Tech Stack
 
-### Core Dependencies
-- aider-chat - Code editing engine (wraps Claude API)
-- celery - Distributed task queue
-- redis - Message broker for Celery
-- slack-bolt - Slack integration
-- PyGithub - GitHub API client
-- python-dotenv - Environment variable management
-- anthropic - Claude API (used by Aider)
-- playwright - Web automation and screenshots
-- beautifulsoup4 - HTML parsing and content extraction
-- duckduckgo-search - Internet search for proactive research
+- **Code generation:** Aider + Claude Sonnet 4.5
+- **Task queue:** Celery + Redis
+- **Communication:** Slack Bolt (Socket Mode)
+- **Web automation:** Playwright
+- **Search:** DuckDuckGo
 
-### Models
-- **Dogwalker (orchestration):** Claude Sonnet 4.5 or cheaper (Haiku, GPT-4o-mini)
-- **Dogs (code generation):** Claude Sonnet 4.5 (primary), with option to use cheaper models for simple tasks
-
-### Deployment
-- **Platform:** Railway
-- **Services:**
-  - Web process: Slack bot listener
-  - Worker process: Celery workers (dogs)
-  - Redis: Task queue + state management
-- **Estimated Cost:** $20-40/month (infrastructure) + API costs (~$3-10/task)
-
-## Data Flow
+## Architecture
 
 ```
-Human types in Slack: "@dogwalker add rate limiting to /api/login"
-        ↓
-Slack bot receives message, creates task in Celery queue
-        ↓
-Posts to Slack thread: "🐕 Coregi is taking this task!"
-        ↓
-Celery worker (dog) picks up task
-        ↓
-Worker clones repo, creates feature branch
-        ↓
-Dog generates implementation plan using Aider
-        ↓
-Worker pushes empty branch, creates DRAFT PR with plan
-        ↓
-Posts to Slack: "📋 Coregi created draft PR with plan [link + preview]"
-        ↓
-Aider (with Sonnet 4.5) explores codebase and edits code
-        ↓
-Dog runs self-review, makes improvements
-        ↓
-Dog writes comprehensive tests, verifies they pass
-        ↓
-Worker commits changes, pushes to branch
-        ↓
-Worker updates PR description with full details
-        ↓
-Worker marks PR as "Ready for Review" (exits draft)
-        ↓
-Posts to Slack thread: "✅ Work complete! PR ready for review [link]"
-        ↓
-Human reviews and merges (or requests changes)
+Slack @mention → Orchestrator (selects least-busy dog) → Worker (dog) clones repo
+→ Aider generates plan → Draft PR posted → Aider implements code
+→ Self-review → Tests → Final PR ready for review → Slack notification
 ```
 
-## Project Structure
-
-Monorepo structure with separate apps for orchestrator, worker, and shared utilities:
-
-```
-dogwalker/
-├── apps/
-│   ├── orchestrator/         # Slack bot + Celery task queue
-│   │   ├── src/
-│   │   │   ├── bot.py            # Main entry point
-│   │   │   ├── celery_app.py     # Celery configuration
-│   │   │   ├── dog_selector.py   # Dog assignment logic
-│   │   │   ├── tasks.py          # Celery task definitions
-│   │   │   └── listeners/        # Event listeners (modular)
-│   │   │       ├── __init__.py
-│   │   │       ├── events/
-│   │   │       │   ├── __init__.py
-│   │   │       │   └── app_mentioned.py  # @mention handler
-│   │   │       └── actions/
-│   │   │           ├── __init__.py
-│   │   │           └── cancel_task.py     # Cancel button handler
-│   │   ├── requirements.txt
-│   │   ├── railway.json
-│   │   └── README.md
-│   │
-│   ├── worker/               # Celery worker (Dogs)
-│   │   ├── src/
-│   │   │   ├── worker_tasks.py  # Task implementation
-│   │   │   ├── dog.py           # Aider wrapper
-│   │   │   ├── repo_manager.py  # Git operations
-│   │   │   ├── cancellation.py  # Cancellation management
-│   │   │   └── celery_app.py    # Worker configuration
-│   │   ├── requirements.txt
-│   │   ├── railway.json
-│   │   └── README.md
-│   │
-│   ├── shared/               # Common utilities
-│   │   ├── src/
-│   │   │   ├── config.py        # Environment management
-│   │   │   ├── github_client.py # GitHub API wrapper
-│   │   │   └── slack_utils.py   # Message formatting
-│   │   ├── requirements.txt
-│   │   └── README.md
-│   │
-│   └── api/                  # Future HTTP API (placeholder)
-│       ├── src/
-│       │   └── server.py
-│       ├── requirements.txt
-│       └── README.md
-│
-├── docs/
-│   ├── ARCHITECTURE.md       # System design & data flow
-│   ├── DEPLOYMENT.md         # Railway deployment guide
-│   └── AGENTS_APPENDLOG.md   # Audit log of changes
-│
-├── scripts/
-│   ├── setup/
-│   │   └── validate_env.py   # Environment validation
-│   └── tests/
-│       └── test_aider.py     # Aider integration test
-│
-├── workdir/                  # Temp workspace (gitignored)
-├── .env.example              # Environment variable template
-├── requirements.txt          # Root dependencies
-├── Procfile                  # Railway process definitions
-└── README.md                 # This file
-```
-
-## Key Implementation Details
-
-### Modular Listener Pattern
-
-The orchestrator uses a modular listener pattern inspired by [Slack's bolt-python-assistant-template](https://github.com/slack-samples/bolt-python-assistant-template):
-
-- **Separation of concerns**: Each event type has its own file
-- **Easy extensibility**: Add new listeners without touching core code
-- **Clean entry point**: `bot.py` is just initialization and startup
-- **Type-safe handlers**: Proper type hints on all functions
-
-Example structure:
-```python
-# listeners/events/app_mentioned.py
-def handle_app_mention(event: dict, say: Say, client: WebClient, logger: Logger):
-    # Handle @dogwalker mentions
-
-# listeners/events/__init__.py
-def register(app: App):
-    app.event("app_mention")(handle_app_mention)
-```
-
-This makes it trivial to add new event handlers, action handlers (buttons), or Slack interactions.
-
-### Aider Integration
-Aider provides the code editing primitives. It handles:
-- Smart file editing (applies diffs correctly)
-- Context management (only loads relevant files)
-- Git integration (auto-commits)
-- Search/grep tools for codebase exploration
-- Multi-phase workflow (plan, implement, review, test)
-
-Usage pattern:
-```python
-from aider.coders import Coder
-from aider.models import Model
-from aider.io import InputOutput
-
-model = Model("anthropic/claude-sonnet-4-20250514")
-io = InputOutput(yes=True)  # Non-interactive mode
-
-coder = Coder.create(
-    main_model=model,
-    io=io,
-    fnames=None,  # Auto-detect relevant files
-    auto_commits=True,
-    map_tokens=1024  # Repo map for context
-)
-
-# Phase 1: Generate plan
-coder.run("Create implementation plan for: add rate limiting")
-
-# Phase 2: Implement
-coder.run("Add rate limiting to /api/login endpoint")
-
-# Phase 3: Self-review
-coder.run("Review changes for code quality, edge cases, and security")
-
-# Phase 4: Test
-coder.run("Write comprehensive tests and verify they pass")
-```
-
-### Context Management
-Dogs don't read entire codebase. Instead:
-1. Use Aider's built-in repo map (compressed view of structure)
-2. Search for relevant files with grep/ripgrep
-3. Read files iteratively as dependencies are discovered
-4. Keep token usage manageable (5k-15k input tokens per task typical)
-
-### Task Queue (Celery)
-```python
-@app.task(bind=True, max_retries=3)
-def run_coding_task(self, task_id, task_description, branch_name, dog_name, dog_display_name):
-    # 1. Clone repo and checkout branch
-    # 2. Generate implementation plan
-    # 3. Push empty branch
-    # 4. Create draft PR with plan
-    # 5. Post draft PR to Slack (with plan preview)
-    # 6. Run Aider to implement changes
-    # 7. Run self-review and improvements
-    # 8. Write comprehensive tests and verify they pass
-    # 9. Push final changes
-    # 10. Update PR with complete details
-    # 11. Mark PR as ready for review
-    # 12. Post completion to Slack
-```
-
-### Dog Selection
-**Current Implementation:** Least-busy load balancing
-- Tracks active tasks per dog in Redis
-- Assigns tasks to dog with fewest active tasks
-- Enables parallel processing with multiple dogs
-- Falls back to round-robin if Redis unavailable
-
-### Error Handling
-- Retry transient errors (git push failures)
-- Don't retry code errors (need human intervention)
-- Post all errors to Slack thread for visibility
-- Max 3 retries with exponential backoff
+See [ARCHITECTURE.md](docs/ARCHITECTURE.md) for details.
 
 ## Environment Variables
 
 ```bash
-# API Keys
-ANTHROPIC_API_KEY=sk-ant-...
-SLACK_BOT_TOKEN=xoxb-...
-SLACK_APP_TOKEN=xapp-...
+ANTHROPIC_API_KEY=sk-ant-...          # Your Claude API key
+SLACK_BOT_TOKEN=xoxb-...              # From Slack app OAuth page
+SLACK_APP_TOKEN=xapp-...              # From Slack app settings
+GITHUB_REPO=yourcompany/yourrepo      # Target repository
+REDIS_URL=redis://localhost:6379      # Redis instance
 
-# Configuration
-GITHUB_REPO=username/reponame
-REDIS_URL=redis://localhost:6379
-
-# Dog Configuration (Multiple Dogs - JSON array)
-# Each dog needs a unique GitHub account and personal access token
+# Configure 1-N dogs (JSON array)
 DOGS='[
-  {"name": "Bryans-Coregi", "email": "coregi@bryanowens.dev", "github_token": "github_pat_11AAA..."},
-  {"name": "Bryans-Bitbull", "email": "bitbull@bryanowens.dev", "github_token": "github_pat_11BBB..."},
-  {"name": "Bryans-Poodle", "email": "poodle@bryanowens.dev", "github_token": "github_pat_11CCC..."}
+  {"name": "YourCompany-Coregi", "email": "coregi@yourcompany.com", "github_token": "github_pat_..."},
+  {"name": "YourCompany-Bitbull", "email": "bitbull@yourcompany.com", "github_token": "github_pat_..."}
 ]'
-
-# Optional: Separate GitHub token for orchestrator (read-only)
-# If not provided, uses first dog's token as fallback
-# GITHUB_TOKEN=github_pat_...
-
-# Legacy: Single Dog (deprecated - use DOGS instead)
-# DOG_NAME=Bryans-Coregi
-# DOG_EMAIL=coregi@bryanowens.dev
-# DOG_GITHUB_TOKEN=github_pat_...
 ```
 
-## MVP Scope (Weeks 1-3)
+See `.env.example` for full configuration options.
 
-### Week 1: Core Infrastructure
-- Local Celery + Redis setup
-- Aider integration and testing
-- Basic task: clone repo → run Aider → push branch
+## Contributing
 
-### Week 2: Integrations
-- GitHub PR creation via API
-- Slack bot (receive commands, post updates)
-- Connect Slack → Celery queue
+Contributions welcome! This is community-driven software.
 
-### Week 3: Deployment
-- Railway setup (worker + bot + Redis)
-- End-to-end test: Slack → code → PR
-- Error handling and logging
+- Report bugs and request features via [GitHub Issues](https://github.com/your-org/dogwalker/issues)
+- Submit PRs for bug fixes or new features
+- Follow code style in [CLAUDE.md](CLAUDE.md)
 
-### Week 4: Polish
-- Documentation
-- First external beta tester
-- Cost tracking per task
+## Similar Projects
 
-## Features Implemented
-- ✅ **Multiple dogs** - Configure 1-N dogs via DOGS env var
-- ✅ **Load balancing** - Least-busy algorithm distributes tasks evenly
-- ✅ **Parallel processing** - Multiple dogs work simultaneously
-- ✅ **Task cancellation** - Cancel in-progress tasks with Slack button, graceful shutdown with partial PR
-- ✅ **Bi-directional communication** - Dogs can respond to feedback and ask clarifying questions via Slack
-- ✅ **Web browsing** - Automatic URL detection, website screenshots, and content extraction for visual-driven development
-- ✅ **Proactive internet search** - Dogs autonomously search for current docs, examples, and best practices when needed
-- ✅ **Before/after screenshots** - Automatic visual documentation of frontend changes with dev server management
+- **Sweep AI** - GitHub issues → PRs (acquired by Roblox)
+- **Devin** - Full AI engineer (closed waitlist)
+- **Factory AI** - Enterprise multi-agent coding
+- **GitHub Copilot Workspace** - IDE-integrated assistant
 
-## Features to Skip Initially
-- AI code review (human review only)
-- Model routing (use Sonnet 4.5 for everything)
-- Multi-repo support (single repo only)
-- Dog specialization (frontend/backend/tests)
+**What makes Dogwalker different:** Fully open source (MIT), self-hosted (you control your data), highly customizable, Slack-native with bi-directional communication, multi-agent parallel processing.
 
-## Longer-Term Vision
+## License
 
-**Bi-directional communication is now implemented!** Dogs can respond to human feedback and ask clarifying questions during execution.
-
-**Future Enhancements:**
-- **Reaction-based responses**: Quick decisions via emoji reactions (e.g., 👤 for per-user, 🌐 for per-IP)
-- **Confidence-based questioning**: Dogs automatically detect uncertainty and ask questions
-- **Multi-option prompts**: Present A/B/C choices with structured responses
-- **Learning from feedback**: Track which feedback patterns lead to better PRs
-- **Progress streaming**: Real-time updates as dogs make changes (vs. phase-based updates)
-
-**Already Working:**
-- ✅ Text-based feedback incorporation during execution
-- ✅ Dogs can ask questions and wait for responses
-- ✅ Autonomous work with human oversight
-- ✅ Conversational development workflow
-
-This positions Dogwalker as a collaborative coding partner rather than a simple automation tool.
-
-## Metrics to Track
-
-From day 1:
-- API costs per task
-- Task success rate (% that result in PRs)
-- Time per task (minutes from Slack → PR)
-- PR merge rate (% of AI PRs that get merged)
-- Weekly active users
-- Revenue (once charging)
-
-## Decision Points
-
-### Month 3-4: Open-Source vs. Closed
-Evaluate based on:
-- Revenue: $0-500/mo → open-source; $500-5k/mo → stay closed; $5k+ → go big
-- Active users: <10 → open-source; 10-50 → iterate; 50+ → real business
-- Your interest level: waning → open-source as portfolio; high → double down
-
-### Pricing (When Ready)
-- Free tier: 10 tasks/month (for evaluation)
-- Starter: $49/month, 100 tasks
-- Team: $149/month, 500 tasks
-- Enterprise: Custom pricing
-
-## Competitive Landscape
-
-Existing solutions:
-- Sweep AI: $480/month, GitHub issues → PRs (acquired by Roblox)
-- Devin: $500/month (estimated), full AI engineer (waitlist only)
-- Factory AI: Enterprise pricing, multi-agent coding
-- GitHub Copilot Workspace: $10-19/month (limited preview)
-
-**Differentiation:**
-- Slack integration for non-technical visibility
-- Multiple specialized agents (vs. single bot)
-- Cheaper (mix of model tiers)
-- Self-hostable (future option)
-
-## Technical Constraints
-
-- No localStorage/sessionStorage in artifacts (not supported in Claude.ai)
-- Each task = fresh container (ephemeral, clone repo each time)
-- Railway free tier limits (budget $20-50/month for realistic usage)
-- GitHub API rate limits (5000 requests/hour per account)
-- Context window limits (manage with Aider's lazy loading)
-
-## Development Philosophy
-
-- **Ship fast, iterate:** 3 weeks to MVP, not 3 months
-- **Closed source initially:** Preserve optionality to open-source later
-- **Real validation:** Revenue > GitHub stars for proving demand
-- **Manual first, automate second:** Test flows manually before automating
-- **Single dog before multi-dog:** Prove one works before scaling
-
-## Next Immediate Actions
-
-1. Set up local Python environment
-2. Test Aider on a sample repo
-3. Implement basic Celery task
-4. Create GitHub bot account
-5. Set up Slack app
-6. Deploy to Railway
-7. End-to-end test
-8. Invite first beta user
+MIT License - see [LICENSE](LICENSE) for details.
 
 ## References
 
-- Aider: https://github.com/paul-gauthier/aider
-- Celery: https://docs.celeryq.dev/
-- Slack Bolt: https://slack.dev/bolt-python/
-- PyGithub: https://pygithub.readthedocs.io/
-- Railway: https://railway.app/
-
-## Project Goal
-
-Build autonomous coding system that handles Slack → code → PR flow reliably enough to charge $49-149/month within 3 months.
+- [Aider](https://github.com/paul-gauthier/aider)
+- [Celery](https://docs.celeryq.dev/)
+- [Slack Bolt](https://slack.dev/bolt-python/)
+- [Deployment Guide](docs/DEPLOYMENT.md)
+- [Architecture Details](docs/ARCHITECTURE.md)

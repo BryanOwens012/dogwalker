@@ -65,6 +65,15 @@ Dogwalker is a multi-agent AI coding system that automates the path from Slack f
 - Socket Mode (WebSocket connection, no public webhooks needed)
 - Celery (task queue client)
 
+**Important:** The orchestrator uses Slack's **Socket Mode** instead of traditional HTTP webhooks. This design choice enables:
+- **Local-first development** - Run on your laptop without exposing public URLs
+- **No infrastructure needed** - Works without SSL certificates or domain names
+- **Firewall-friendly** - Outbound WebSocket connection from orchestrator to Slack
+- **Real-time bidirectional** - Instant event delivery and response
+- **Simplified deployment** - No need for reverse proxies or load balancers
+
+This means Dogwalker can run entirely on a local machine while still receiving real-time events from Slack.
+
 **Key Files:**
 - `bot.py` - Main entry point, initialization
 - `celery_app.py` - Celery configuration
@@ -642,11 +651,13 @@ Code errors, validation failures, Aider failures → Fail immediately
 
 ## Scalability
 
-### Current (Implemented)
+### Current (Implemented) - Local Deployment
 - 1-N dog workers (configurable via DOGS env var)
 - Parallel task processing with load balancing
 - Single Redis instance for queue + task tracking
 - ~10-30 tasks/day capacity (depends on dog count)
+- Runs on single machine (laptop or workstation)
+- Socket Mode ensures reliable connection without public infrastructure
 
 ### Near-term (Month 2-3)
 - Auto-scaling workers based on queue depth
@@ -683,7 +694,42 @@ Code errors, validation failures, Aider failures → Fail immediately
    - Verify event signatures
    - Limit to specific channels
 
-## Deployment Architecture (Railway)
+## Deployment Architecture
+
+### Local Deployment (Current/Recommended)
+
+```
+┌─────────────────────────────────────────────────────┐
+│              Developer's Laptop/Workstation          │
+│                                                      │
+│  ┌──────────────┐  ┌──────────────┐  ┌───────────┐ │
+│  │ Orchestrator │  │    Worker    │  │   Redis   │ │
+│  │   Process    │  │   Process    │  │  (local)  │ │
+│  │              │  │              │  │           │ │
+│  │ bot.py       │  │ celery worker│  │ localhost │ │
+│  │ Socket Mode  │  │ Aider + Git  │  │   :6379   │ │
+│  └──────┬───────┘  └──────┬───────┘  └─────┬─────┘ │
+│         │                 │                 │       │
+│         └─────────────────┴─────────────────┘       │
+│                     Shared Redis                    │
+└─────────────────────────────────────────────────────┘
+         │                      │
+         v                      v
+   Slack API              GitHub API
+   (Socket Mode           (REST)
+    WebSocket)
+
+Cost: $0 (infrastructure) + API costs (~$3-10/task)
+```
+
+**Benefits:**
+- Zero infrastructure cost
+- Full control and privacy
+- Easy debugging (all logs local)
+- No deployment complexity
+- Works offline (except Slack/GitHub/Anthropic API calls)
+
+### Cloud Deployment (Optional - Railway Example)
 
 ```
 ┌─────────────────────────────────────────────────────┐
@@ -704,16 +750,22 @@ Code errors, validation failures, Aider failures → Fail immediately
          v                      v
    Slack API              GitHub API
    (Socket Mode)          (REST)
+
+Cost: ~$20-40/month (infrastructure) + API costs (~$3-10/task)
 ```
 
-**Services:**
-1. **Orchestrator** - Web service running Slack bot
+**Services (Cloud):**
+1. **Orchestrator** - Web service running Slack bot (Socket Mode)
 2. **Worker** - Worker service running Celery
 3. **Redis** - Managed Redis instance (task queue + results)
 
-**Environment Variables:** Shared across services via Railway project settings
+**Environment Variables:** Shared across services via cloud platform settings
 
-**Cost:** ~$20-40/month (3 services + Redis)
+**When to deploy to cloud:**
+- Need 24/7 availability
+- Multiple team members using the bot
+- Production workloads
+- Don't want to keep laptop running
 
 ## Implemented Enhancements
 

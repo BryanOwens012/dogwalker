@@ -748,6 +748,14 @@ _Note: This is a partial implementation that was cancelled mid-execution._
         }
 
     finally:
+        # Stop dev server if it's running
+        try:
+            if 'screenshot_tools' in locals():
+                logger.info("Stopping dev server (if running)...")
+                screenshot_tools.stop_dev_server()
+        except Exception as e:
+            logger.error(f"Failed to stop dev server: {e}")
+
         # Cleanup work directory
         if work_dir.exists():
             import shutil

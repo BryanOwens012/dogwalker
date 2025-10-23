@@ -1,13 +1,28 @@
 # Deployment Guide
 
+## Overview
+
+Dogwalker is **designed for local development first**. You can run the entire system on your laptop without any cloud deployment. The Slack bot uses **Socket Mode** (bidirectional WebSocket connection) instead of HTTP webhooks, which means:
+
+- ✅ No need to expose public URLs
+- ✅ No need for SSL certificates or domain names
+- ✅ No need to deploy to a server to get started
+- ✅ Works behind firewalls and on private networks
+
+**This guide covers both local development and optional cloud deployment.**
+
 ## Prerequisites
 
-Before deploying Dogwalker, you need:
+### For Local Development (Recommended to Start)
+1. **Python 3.10+** - Local Python installation
+2. **Redis** - Local installation (`brew install redis` or `apt-get install redis`)
+3. **GitHub Account** - For dog bot identities
+4. **Slack Workspace** - With admin access to create apps
+5. **Anthropic API Key** - From https://console.anthropic.com
 
-1. **Railway Account** - Sign up at https://railway.app
-2. **GitHub Account** - For repository access and dog identities
-3. **Slack Workspace** - With admin access to install apps
-4. **Anthropic API Key** - From https://console.anthropic.com
+### For Cloud Deployment (Optional)
+1. **Railway Account** - Sign up at https://railway.app (easiest cloud option)
+2. All of the above prerequisites
 
 ## Environment Variables
 
@@ -122,7 +137,27 @@ celery -A src.celery_app worker --loglevel=info
 
 You should see: "celery@hostname ready."
 
-### 5. Test in Slack
+### 5. Start Beat Scheduler (Optional but Recommended)
+
+In a new terminal:
+
+```bash
+cd apps/worker
+celery -A src.celery_app beat --loglevel=info
+```
+
+You should see: "celery beat v5.x.x is starting."
+
+**What does Beat do?**
+- Runs periodic tasks automatically (e.g., every 5 minutes)
+- Currently used for: **Automatic GitHub invitation acceptance**
+  - Checks all dogs for pending repository collaboration invitations
+  - Automatically accepts invitations so dogs can work on new repos
+  - Logs all acceptances for audit trail
+
+**Note:** Beat is optional for local development, but recommended for production. Without it, dogs won't automatically accept GitHub repository invitations.
+
+### 6. Test in Slack
 
 1. Go to your Slack workspace
 2. In any channel where the bot is added:
@@ -174,10 +209,19 @@ Go to "OAuth & Permissions" and add these scopes:
 
 ### 3. Enable Socket Mode
 
+**Important:** Socket Mode allows the bot to connect via WebSocket instead of HTTP webhooks. This means you can run Dogwalker locally without exposing any public URLs.
+
 1. Go to "Socket Mode" in sidebar
 2. Enable Socket Mode
 3. Create an app-level token with `connections:write` scope
 4. Copy token → This is your `SLACK_APP_TOKEN`
+
+**Why Socket Mode?**
+- No public URL needed (perfect for local development)
+- No SSL certificate required
+- Works behind corporate firewalls
+- Real-time bidirectional communication
+- Simpler than traditional webhook setup
 
 ### 4. Subscribe to Events
 
@@ -248,7 +292,14 @@ Add the dog GitHub account to your target repository:
 
 **Note:** The system will automatically create a `dogwalker-screenshots` branch in your repository on first use. This branch stores before/after screenshots with persistent URLs. You don't need to create it manually - it's created automatically when the first frontend task runs.
 
-## Railway Deployment
+## Railway Deployment (Optional)
+
+**Note:** Railway deployment is completely optional. Dogwalker works great locally! Deploy to Railway only if you want:
+- 24/7 availability (bot always online)
+- Team access (don't need to keep your laptop running)
+- Production usage (serving multiple users/teams)
+
+For personal use or development, local deployment is recommended.
 
 ### 1. Create Railway Project
 
@@ -291,6 +342,32 @@ Railway will:
 - Start: `celery -A src.celery_app worker --loglevel=info`
 
 **Note:** The Playwright browser installation adds ~150MB to the deployment size but is necessary for web screenshot capabilities.
+
+### 4.5. Deploy Beat Scheduler (Recommended)
+
+The beat scheduler runs periodic tasks (e.g., automatic GitHub invitation acceptance).
+
+1. Click "New" → "GitHub Repo" (same repo)
+2. Root Directory: `/apps/worker`
+3. Name: "beat"
+4. Add same environment variables as orchestrator and worker
+5. **Important:** Change the start command:
+   - Go to service Settings → Deploy
+   - Start Command: `celery -A src.celery_app beat --loglevel=info`
+6. Deploy
+
+Railway will:
+- Build: `pip install -r requirements.txt`
+- Start: `celery -A src.celery_app beat --loglevel=info`
+
+**What does Beat do?**
+- Runs periodic tasks automatically (every 5 minutes)
+- **Automatic GitHub invitation acceptance**: When someone invites a dog to collaborate on a repository, the beat scheduler automatically accepts the invitation
+- Logs all activity for audit trail
+
+**Note:** Beat is optional but recommended for production. Without it:
+- Dogs won't automatically accept GitHub repository invitations
+- You'll need to manually accept invitations for each dog account
 
 ### 5. Set Environment Variables
 
@@ -569,21 +646,42 @@ If Railway services fail:
 3. Redeploy service
 4. Test end-to-end workflow
 
+## Choosing Between Local and Cloud Deployment
+
+### Run Locally When:
+- ✅ You're the only user or on a small team
+- ✅ You're developing or testing Dogwalker
+- ✅ You work from one machine most of the time
+- ✅ You want zero infrastructure costs
+- ✅ You want maximum control and privacy
+
+### Deploy to Cloud When:
+- ✅ You need 24/7 availability
+- ✅ Multiple team members use the bot
+- ✅ You want to access from multiple machines
+- ✅ You're serving production workloads
+- ✅ You need automatic scaling
+
+**Recommendation:** Start locally, deploy to cloud only if/when you need it.
+
 ## Next Steps
 
-After successful deployment:
+After successful setup (local or cloud):
 
-1. **Invite beta users** to Slack workspace
-2. **Monitor task success rate** (target: >80%)
-3. **Track costs** per task
-4. **Gather feedback** on code quality
-5. **Iterate** on prompt engineering for better results
+1. **Test basic functionality** - Try a simple task
+2. **Monitor task success rate** - Aim for >80% successful PRs
+3. **Track API costs** - Understand your usage patterns
+4. **Gather feedback** - Review code quality and iterate
+5. **Optimize prompts** - Improve results based on real usage
 
 ## Support
 
 For issues:
-1. Check Railway logs first
-2. Test components locally
-3. Verify all environment variables
-4. Review this deployment guide
-5. Open GitHub issue with logs
+1. **Local deployment:** Check orchestrator/worker terminal output
+2. **Cloud deployment:** Check Railway/cloud provider logs
+3. Test components locally first (easier to debug)
+4. Verify all environment variables are set
+5. Review this deployment guide
+6. Open GitHub issue with logs and error messages
+
+**Community support:** Open an issue on GitHub or contribute to discussions!

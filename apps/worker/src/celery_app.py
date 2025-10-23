@@ -16,7 +16,7 @@ app = Celery(
     "dogwalker",
     broker=config.redis_url,
     backend=config.redis_url,
-    include=["worker_tasks"]  # Tell Celery where to find tasks
+    include=["worker_tasks", "invitation_acceptor"]  # Tell Celery where to find tasks
 )
 
 # Celery configuration
@@ -30,3 +30,14 @@ app.conf.update(
     task_acks_late=True,
     worker_prefetch_multiplier=1,  # Only take one task at a time
 )
+
+# Celery Beat schedule for periodic tasks
+app.conf.beat_schedule = {
+    'accept-github-invitations': {
+        'task': 'invitation_acceptor.accept_pending_invitations',
+        'schedule': 300.0,  # Run every 5 minutes (300 seconds)
+        'options': {
+            'expires': 60.0,  # Task expires after 60 seconds if not picked up
+        }
+    },
+}
