@@ -5,7 +5,7 @@ const HomePage = () => {
   return (
     <div className="min-h-screen">
       {/* Navigation */}
-      <nav className="sticky top-0 z-50 border-b border-border bg-background/95 backdrop-blur">
+      <nav className="sticky top-0 z-50 border-b border-white bg-secondary">
         <div className="container mx-auto px-6">
           <div className="flex h-16 items-center justify-between">
             <div className="flex items-center gap-2 text-2xl font-bold">
@@ -27,7 +27,7 @@ const HomePage = () => {
 
       <main>
         {/* Hero Section */}
-        <section className="bg-gradient-to-br from-secondary to-muted py-24 md:py-32">
+        <section className="py-24 md:py-32">
           <div className="container mx-auto px-6">
             <div className="mx-auto max-w-4xl text-center">
               <h1 className="mb-6 text-5xl font-extrabold leading-tight md:text-6xl">
@@ -37,8 +37,9 @@ const HomePage = () => {
                 </span>
               </h1>
               <p className="mx-auto mb-10 max-w-3xl text-lg text-muted-foreground md:text-xl">
-                Open-source, self-hosted AI coding system that turns feature requests into production-ready pull requests.
-                Multiple AI agents work in parallel, write tests, and deliver code ready for human review.
+                Slack bot that turns feature requests into production-ready pull
+                requests. Multiple AI agents work in parallel, write tests, and
+                deliver code ready for human review.
               </p>
               <div className="flex justify-center">
                 <Link
@@ -55,84 +56,140 @@ const HomePage = () => {
           </div>
         </section>
 
-        {/* How It Works */}
-        <section className="py-20">
+        {/* Real Example Section */}
+        <section className="bg-gradient-to-br from-muted to-secondary py-20">
           <div className="container mx-auto px-6">
-            <h2 className="mb-12 text-center text-4xl font-bold">How It Works</h2>
-            <div className="mx-auto grid max-w-5xl gap-8 md:grid-cols-4">
-              {[
-                {
-                  number: 1,
-                  title: "Mention in Slack",
-                  description: (
-                    <>
-                      Type <code className="rounded bg-muted px-1.5 py-0.5 text-sm text-primary font-mono">@dogwalker add rate limiting to /api/login</code> in any channel or thread
-                    </>
-                  ),
-                },
-                {
-                  number: 2,
-                  title: "AI Creates Plan",
-                  description: "AI dog generates implementation plan and creates draft PR for early review",
-                },
-                {
-                  number: 3,
-                  title: "Code + Test + Review",
-                  description: "AI writes code, runs self-review, adds comprehensive tests, and validates everything works",
-                },
-                {
-                  number: 4,
-                  title: "PR Ready",
-                  description: "Production-ready pull request marked for human review with complete documentation",
-                },
-              ].map((step) => (
-                <div key={step.number} className="flex flex-col items-center text-center">
-                  <div className="mb-6 flex h-16 w-16 items-center justify-center rounded-full bg-gradient-to-br from-primary to-accent text-2xl font-bold text-white">
-                    {step.number}
-                  </div>
-                  <h3 className="mb-3 text-xl font-semibold">{step.title}</h3>
-                  <p className="text-sm text-muted-foreground">{step.description}</p>
+            <h2 className="mb-12 text-center text-4xl font-bold">
+              See It In Action
+            </h2>
+            <div className="mx-auto max-w-7xl">
+              <div className="flex flex-col gap-12 lg:flex-row lg:items-start lg:justify-center">
+                {/* Left side - Annotations */}
+                <div className="flex flex-col gap-6 lg:mt-8 lg:max-w-sm">
+                  {[
+                    {
+                      number: 1,
+                      title: "Developer makes request",
+                      description:
+                        "Mention @dogwalker with feature request in any Slack channel or thread",
+                      marginTop: "mt-8",
+                    },
+                    {
+                      number: 2,
+                      title: "Dog acknowledges task",
+                      description:
+                        "AI agent confirms it's working on the request",
+                      marginTop: "mt-16",
+                    },
+                    {
+                      number: 3,
+                      title: "Creates draft PR with plan",
+                      description:
+                        "Generates implementation plan and opens draft PR for early review",
+                      marginTop: "",
+                    },
+                    {
+                      number: 4,
+                      title: "Bi-directional feedback",
+                      description:
+                        "Developer can request changes at any time—AI incorporates feedback",
+                      marginTop: "",
+                    },
+                    {
+                      number: 5,
+                      title: "PR ready for review",
+                      description:
+                        "Dog completes work, runs tests, and marks PR ready for human review",
+                      marginTop: "",
+                    },
+                  ].map((step) => (
+                    <div
+                      key={step.number}
+                      className={`relative flex items-start gap-4 rounded-xl border-2 border-primary/20 bg-background p-4 shadow-sm hover:border-primary/40 hover:shadow-md transition-all after:absolute after:right-0 after:top-1/2 after:h-0 after:w-0 after:translate-x-full after:-translate-y-1/2 after:border-8 after:border-transparent after:border-l-primary/30 after:content-[''] lg:after:block after:hidden ${step.marginTop}`}
+                    >
+                      <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-primary text-sm font-bold text-primary-foreground">
+                        {step.number}
+                      </div>
+                      <div>
+                        <h4 className="mb-1 font-semibold text-foreground">
+                          {step.title}
+                        </h4>
+                        <p className="text-sm text-muted-foreground">
+                          {step.description}
+                        </p>
+                      </div>
+                    </div>
+                  ))}
                 </div>
-              ))}
+
+                {/* Right side - Slack screenshot */}
+                <div className="flex flex-shrink-0 flex-col items-center gap-6">
+                  <div className="overflow-hidden rounded-2xl border border-border bg-card shadow-xl">
+                    <img
+                      src="/slack-thread-example.png"
+                      alt="Real Slack thread showing Dogwalker in action"
+                      className="h-auto w-full lg:w-[450px]"
+                    />
+                  </div>
+                  <Link
+                    href="https://github.com/BryanOwens012/dog-park/pull/45"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-2 rounded-lg border-2 border-primary bg-background px-6 py-3 text-base font-semibold text-primary transition-all hover:-translate-y-0.5 hover:bg-primary hover:text-primary-foreground hover:shadow-lg"
+                  >
+                    <Github className="h-5 w-5" />
+                    View the Pull Request
+                    <ArrowRight className="h-4 w-4" />
+                  </Link>
+                </div>
+              </div>
             </div>
           </div>
         </section>
 
         {/* Features */}
-        <section className="bg-secondary py-20">
+        <section className="py-20">
           <div className="container mx-auto px-6">
-            <h2 className="mb-12 text-center text-4xl font-bold">Key Features</h2>
+            <h2 className="mb-12 text-center text-4xl font-bold">
+              Key Features
+            </h2>
             <div className="grid gap-8 md:grid-cols-2 lg:grid-cols-3">
               {[
                 {
                   icon: "🤝",
                   title: "Bi-Directional Communication",
-                  description: "Reply in Slack threads to give feedback while dogs are working. AI responds to questions and incorporates your input in real-time.",
+                  description:
+                    "Reply in Slack threads to give feedback while dogs are working. AI responds to questions and incorporates your input in real-time.",
                 },
                 {
                   icon: "🐕",
                   title: "Multi-Agent Architecture",
-                  description: "Configure multiple AI \"dogs\" that work in parallel with load balancing. Scale from 1 to N agents as your team grows.",
+                  description:
+                    'Configure multiple AI "dogs" that work in parallel with load balancing. Scale from 1 to N agents as your team grows.',
                 },
                 {
                   icon: "📸",
                   title: "Visual Documentation",
-                  description: "Automatic before/after screenshots for UI changes. Include URLs in tasks to replicate designs from reference websites.",
+                  description:
+                    "Automatic before/after screenshots for UI changes. Include URLs in tasks to replicate designs from reference websites.",
                 },
                 {
                   icon: "🔍",
                   title: "Proactive Research",
-                  description: "Dogs autonomously search for current docs, API changes, and best practices. Always uses up-to-date information.",
+                  description:
+                    "Dogs autonomously search for current docs, API changes, and best practices. Always uses up-to-date information.",
                 },
                 {
                   icon: "✅",
                   title: "Quality Assurance",
-                  description: "Three-phase workflow: self-review for improvements, comprehensive test writing, and validation before marking PR ready.",
+                  description:
+                    "Three-phase workflow: self-review for improvements, comprehensive test writing, and validation before marking PR ready.",
                 },
                 {
                   icon: "🔒",
                   title: "Self-Hosted",
-                  description: "Run on your infrastructure. Your code never leaves your control. MIT licensed and fully open source.",
+                  description:
+                    "Run on your infrastructure. Your code never leaves your control. MIT licensed and fully open source.",
                 },
               ].map((feature, index) => (
                 <div
@@ -140,8 +197,12 @@ const HomePage = () => {
                   className="rounded-2xl border border-border bg-card p-8 transition-all hover:-translate-y-1 hover:border-primary hover:shadow-lg"
                 >
                   <div className="mb-4 text-5xl">{feature.icon}</div>
-                  <h3 className="mb-3 text-xl font-semibold">{feature.title}</h3>
-                  <p className="text-sm leading-relaxed text-muted-foreground">{feature.description}</p>
+                  <h3 className="mb-3 text-xl font-semibold">
+                    {feature.title}
+                  </h3>
+                  <p className="text-sm leading-relaxed text-muted-foreground">
+                    {feature.description}
+                  </p>
                 </div>
               ))}
             </div>
@@ -149,9 +210,11 @@ const HomePage = () => {
         </section>
 
         {/* Tech Stack */}
-        <section className="py-20">
+        <section className="bg-secondary py-20">
           <div className="container mx-auto px-6">
-            <h2 className="mb-12 text-center text-4xl font-bold">Built With Modern Tools</h2>
+            <h2 className="mb-12 text-center text-4xl font-bold">
+              Built With Modern Tools
+            </h2>
             <div className="mx-auto grid max-w-4xl gap-6 md:grid-cols-3">
               {[
                 { name: "Claude Sonnet 4.5", desc: "Code generation" },
@@ -166,7 +229,9 @@ const HomePage = () => {
                   className="rounded-xl border border-border bg-secondary p-6 text-center transition-all hover:-translate-y-0.5 hover:border-primary"
                 >
                   <div className="font-semibold">{tech.name}</div>
-                  <div className="text-sm text-muted-foreground">{tech.desc}</div>
+                  <div className="text-sm text-muted-foreground">
+                    {tech.desc}
+                  </div>
                 </div>
               ))}
             </div>
@@ -177,9 +242,12 @@ const HomePage = () => {
         <section className="bg-gradient-to-r from-primary to-accent py-20 text-primary-foreground">
           <div className="container mx-auto px-6">
             <div className="mx-auto max-w-3xl text-center">
-              <h2 className="mb-4 text-4xl font-bold">Ready to automate your code reviews?</h2>
+              <h2 className="mb-4 text-4xl font-bold">
+                Ready to automate your code reviews?
+              </h2>
               <p className="mb-8 text-lg opacity-95">
-                Clone the repo, configure your dogs, and start shipping features faster.
+                Clone the repo, configure your dogs, and start shipping features
+                faster.
               </p>
               <Link
                 href="https://github.com/BryanOwens012/dogwalker"
@@ -204,7 +272,10 @@ const HomePage = () => {
                 <span className="text-4xl">🐕</span>
                 <span>Dogwalker</span>
               </div>
-              <p className="text-muted-foreground">Open-source, self-hosted AI coding system</p>
+              <p className="text-muted-foreground">
+                Slack bot that turns feature requests into production-ready pull
+                requests
+              </p>
             </div>
             <div className="flex flex-col gap-4 md:flex-row md:gap-8">
               <Link
@@ -240,11 +311,6 @@ const HomePage = () => {
                 Issues
               </Link>
             </div>
-          </div>
-          <div className="border-t border-border pt-8 text-center">
-            <p className="text-sm text-muted-foreground">
-              MIT License &copy; 2025 Dogwalker Contributors
-            </p>
           </div>
         </div>
       </footer>
