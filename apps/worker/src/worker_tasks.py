@@ -26,6 +26,9 @@ from dog import Dog
 from dog_selector import DogSelector
 from cancellation import CancellationManager, TaskCancelled
 from dog_communication import DogCommunication
+from web_tools import WebTools
+from search_tools import SearchTools
+from screenshot_tools import ScreenshotTools
 
 logger = logging.getLogger(__name__)
 
@@ -40,6 +43,10 @@ logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 )
+
+# Note: Pydantic V2.11 compatibility issue in litellm was fixed directly in:
+# venv/lib/python3.10/site-packages/litellm/litellm_core_utils/core_helpers.py:200
+# Changed: model_response.model_fields -> type(model_response).model_fields
 
 
 @app.task(
@@ -145,32 +152,104 @@ def run_coding_task(
         repo_manager.clone()
         repo_manager.create_branch(branch_name, base_branch=config.base_branch)
 
-        # Step 1.5: Save images to work directory if present
+        # Step 1.5: Save images to work directory and upload to GitHub
         image_files = []
+        image_github_urls = {}  # Map local path to GitHub URL
         if images:
-            logger.info(f"Saving {len(images)} image(s) to work directory")
+            logger.info(f"Saving and uploading {len(images)} image(s)")
             images_dir = work_dir / ".dogwalker_images"
             images_dir.mkdir(exist_ok=True)
 
             import base64
+            import re
             for i, img in enumerate(images):
-                filename = img.get("filename", f"image_{i}")
+                filename = img.get("filename", f"image_{i}.png")
+                mimetype = img.get("mimetype", "image/png")
                 data = img.get("data", "")
+
+                # Sanitize filename: replace spaces and special chars with underscores
+                # Keep extension (.png, .jpg, .jpeg, .gif, .webp, etc.)
+                name_parts = filename.rsplit('.', 1)
+                if len(name_parts) == 2:
+                    name, ext = name_parts
+                    # Replace spaces and special characters with underscores
+                    name = re.sub(r'[^a-zA-Z0-9_-]', '_', name)
+                    # Preserve original extension (lowercase for consistency)
+                    sanitized_filename = f"{name}.{ext.lower()}"
+                else:
+                    # No extension - try to detect from mimetype
+                    sanitized_name = re.sub(r'[^a-zA-Z0-9_-]', '_', filename)
+                    # Extract extension from mimetype (e.g., "image/png" -> "png")
+                    ext = mimetype.split('/')[-1] if '/' in mimetype else 'png'
+                    sanitized_filename = f"{sanitized_name}.{ext}"
+
+                logger.info(f"📎 Processing image: {filename}")
+                logger.info(f"   MIME type: {mimetype}")
+                logger.info(f"   Sanitized to: {sanitized_filename}")
 
                 # Decode base64 image data
                 try:
                     image_bytes = base64.b64decode(data)
-                    image_path = images_dir / filename
+                    image_path = images_dir / sanitized_filename
                     image_path.write_bytes(image_bytes)
+
+                    # Upload to GitHub for persistent URL (same as screenshots)
+                    logger.info(f"Uploading Slack image to GitHub: {sanitized_filename}")
+                    github_url = github_client.upload_image_to_github(
+                        image_path=str(image_path),
+                        screenshot_filename=f"slack_{sanitized_filename}"  # Prefix to distinguish from screenshots
+                    )
+
+                    if github_url:
+                        image_github_urls[str(image_path)] = github_url
+                        logger.info(f"✅ Slack image uploaded successfully!")
+                        logger.info(f"   Local path: {image_path}")
+                        logger.info(f"   GitHub URL: {github_url}")
+                    else:
+                        logger.error(f"❌ Failed to upload Slack image to GitHub: {filename}")
+                        logger.error(f"   This image will NOT appear in PR description")
+                        logger.error(f"   Check GitHub token permissions for branch creation and file writes")
+
                     image_files.append(str(image_path))
                     logger.info(f"Saved image: {filename} ({len(image_bytes)} bytes)")
                 except Exception as e:
-                    logger.error(f"Failed to save image {filename}: {e}")
+                    logger.error(f"Failed to save/upload image {filename}: {e}")
 
-            # Commit images so they're available in the PR
-            if image_files:
-                logger.info("Committing images to branch")
-                repo_manager.commit_changes(f"Add reference images ({len(image_files)} image(s))")
+            # No longer need to commit images to branch - they're uploaded to GitHub
+            logger.info(f"📊 Image upload summary: {len(image_files)} total, {len(image_github_urls)} uploaded to GitHub")
+            if image_github_urls:
+                logger.info("GitHub URLs mapping:")
+                for local, github in image_github_urls.items():
+                    logger.info(f"  {local} -> {github}")
+
+        # Step 1.6: Detect and fetch URLs from task description
+        web_context = None
+        web_screenshot_files = []
+        urls = WebTools.extract_urls(task_description)
+
+        if urls:
+            logger.info(f"Detected {len(urls)} URL(s) in task description, fetching and screenshotting...")
+
+            web_tools = WebTools(work_dir=work_dir)
+
+            # Fetch and screenshot websites (limit to 5 URLs)
+            fetch_results = web_tools.fetch_multiple_urls(urls, max_urls=5)
+
+            # Get screenshot paths for successful fetches
+            web_screenshot_files = web_tools.get_screenshot_paths(fetch_results)
+
+            # Format context for AI
+            web_context = web_tools.format_web_context_for_ai(fetch_results)
+
+            # Commit screenshots to branch
+            if web_screenshot_files:
+                logger.info(f"Committing {len(web_screenshot_files)} website screenshot(s) to branch")
+                repo_manager.commit_changes(f"Add website screenshots ({len(web_screenshot_files)} screenshot(s))")
+
+            # Combine with image_files for PR description
+            if web_screenshot_files:
+                image_files.extend(web_screenshot_files)
+                logger.info(f"Total visual assets: {len(image_files)} (images + screenshots)")
 
         # Step 2: Create placeholder commit so PR can be created
         logger.info("Creating placeholder commit for PR creation")
@@ -198,7 +277,23 @@ def run_coding_task(
 
         # Step 4: Initialize Dog and generate PR title and implementation plan
         logger.info("Initializing AI agent (Dog)")
-        dog = Dog(repo_path=work_dir, communication=communication)
+
+        # Initialize search tools for proactive internet research
+        search_tools = SearchTools()
+
+        # Initialize screenshot tools for before/after visual documentation
+        screenshot_tools = ScreenshotTools(
+            repo_path=work_dir,
+            work_dir=work_dir,
+            github_client=github_client  # Pass GitHub client for uploading screenshots
+        )
+
+        dog = Dog(
+            repo_path=work_dir,
+            communication=communication,
+            search_tools=search_tools,
+            screenshot_tools=screenshot_tools
+        )
 
         logger.info("Generating concise PR title")
         # Generate AI-created title (max 57 chars to leave room for "[Dogwalker] " prefix)
@@ -246,6 +341,7 @@ def run_coding_task(
             request_time_str=request_time_str,
             plan=plan,
             image_files=image_files if image_files else None,
+            image_github_urls=image_github_urls if image_github_urls else None,
         )
 
         pr_info = github_client.create_pull_request(
@@ -284,6 +380,14 @@ def run_coding_task(
         # Checkpoint: Before implementation phase
         check_cancellation("planning")
 
+        # Step 6.5: Capture "before" screenshots if this is a frontend task
+        logger.info("Checking if before screenshots are needed...")
+        before_screenshots = dog.capture_before_screenshots(plan)
+
+        if before_screenshots:
+            logger.info(f"Captured and uploaded {len(before_screenshots)} before screenshots to GitHub")
+            # Screenshots are uploaded to GitHub (dogwalker-screenshots branch), not committed to PR branch
+
         # Check for human feedback before starting implementation
         feedback = communication.check_for_feedback()
         if feedback:
@@ -298,7 +402,11 @@ def run_coding_task(
         if feedback:
             full_task_description = f"{task_description}\n\n{communication.format_feedback_for_prompt(feedback)}"
 
-        success = dog.run_task(full_task_description, image_files=image_files if image_files else None)
+        success = dog.run_task(
+            full_task_description,
+            image_files=image_files if image_files else None,
+            web_context=web_context
+        )
 
         if not success:
             raise ValueError("Aider did not produce code changes")
@@ -317,7 +425,7 @@ def run_coding_task(
             feedback_prompt = f"""{communication.format_feedback_for_prompt(post_impl_feedback)}
 
 Please make these changes now."""
-            dog.run_task(feedback_prompt)
+            dog.run_task(feedback_prompt, web_context=web_context)
 
         # Step 8: Run self-review
         logger.info("Running self-review on code changes")
@@ -337,7 +445,7 @@ Please make these changes now."""
             feedback_prompt = f"""{communication.format_feedback_for_prompt(post_review_feedback)}
 
 Please make these changes now."""
-            dog.run_task(feedback_prompt)
+            dog.run_task(feedback_prompt, web_context=web_context)
 
         # Step 9: Write and run comprehensive tests
         logger.info("Writing and running comprehensive tests")
@@ -359,13 +467,23 @@ Please make these changes now."""
             feedback_prompt = f"""{communication.format_feedback_for_prompt(final_feedback)}
 
 Please make these changes now."""
-            dog.run_task(feedback_prompt)
+            dog.run_task(feedback_prompt, web_context=web_context)
 
             # Re-run tests to ensure changes didn't break anything
             logger.info("Re-running tests after incorporating final feedback")
             test_success, test_message = dog.write_and_run_tests()
             if not test_success:
                 raise ValueError(f"Tests failed after final feedback: {test_message}")
+
+        # Step 9.5: Capture "after" screenshots if we took "before" screenshots
+        after_screenshots = []
+        if before_screenshots:
+            logger.info("Capturing after screenshots...")
+            after_screenshots = dog.capture_after_screenshots(before_screenshots)
+
+            if after_screenshots:
+                logger.info(f"Captured and uploaded {len(after_screenshots)} after screenshots to GitHub")
+                # Screenshots are uploaded to GitHub (dogwalker-screenshots branch), not committed to PR branch
 
         # Step 10: Remove placeholder file and push final changes
         logger.info("Removing placeholder .gitkeep file")
@@ -432,8 +550,11 @@ Max 3-5 bullet points."""
             files_modified=modified_files,
             critical_review_points=critical_review_points,
             image_files=image_files if image_files else None,
+            image_github_urls=image_github_urls if image_github_urls else None,
             cost_report=cost_report,
             thread_feedback=thread_feedback,
+            before_screenshots=before_screenshots if before_screenshots else None,
+            after_screenshots=after_screenshots if after_screenshots else None,
         )
 
         github_client.update_pull_request(
@@ -627,6 +748,14 @@ _Note: This is a partial implementation that was cancelled mid-execution._
         }
 
     finally:
+        # Stop dev server if it's running
+        try:
+            if 'screenshot_tools' in locals():
+                logger.info("Stopping dev server (if running)...")
+                screenshot_tools.stop_dev_server()
+        except Exception as e:
+            logger.error(f"Failed to stop dev server: {e}")
+
         # Cleanup work directory
         if work_dir.exists():
             import shutil

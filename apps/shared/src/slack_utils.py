@@ -16,6 +16,7 @@ def format_task_started(dog_name: str, task_description: str, task_id: str) -> d
         Slack message with blocks including cancel button
     """
     return {
+        "text": f"🐕 {dog_name} is taking this task! {task_description}",  # Fallback text for notifications
         "blocks": [
             {
                 "type": "section",

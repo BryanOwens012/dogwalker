@@ -227,3 +227,174 @@ class GitHubClient:
             Default branch name (e.g., 'main' or 'master')
         """
         return self.repo.default_branch
+
+    def upload_image_to_github(
+        self,
+        image_path: str,
+        screenshot_filename: str
+    ) -> Optional[str]:
+        """
+        Upload an image to GitHub screenshots branch and get a permanent URL.
+
+        Uploads to a dedicated 'dogwalker-screenshots' branch and returns a
+        GitHub blob URL that works for both public and private repos.
+
+        Args:
+            image_path: Path to the image file
+            screenshot_filename: Filename to use in the screenshots branch
+
+        Returns:
+            Permanent GitHub blob URL, or None on failure
+        """
+        try:
+            from pathlib import Path
+
+            image_file = Path(image_path)
+            if not image_file.exists():
+                logger.error(f"Image file not found: {image_path}")
+                return None
+
+            # Read image data (PyGithub will handle base64 encoding)
+            with open(image_file, 'rb') as f:
+                image_data = f.read()
+
+            screenshots_branch = "dogwalker-screenshots"
+            screenshot_path = screenshot_filename  # Store in root of screenshots branch
+
+            # Check if screenshots branch exists, create if not
+            try:
+                branch = self.repo.get_branch(screenshots_branch)
+                logger.info(f"✅ Screenshots branch '{screenshots_branch}' exists (SHA: {branch.commit.sha[:7]})")
+            except GithubException as e:
+                # Create screenshots branch from default branch
+                logger.info(f"📝 Creating screenshots branch '{screenshots_branch}' (branch not found)")
+                try:
+                    default_branch = self.repo.get_branch(self.repo.default_branch)
+                    self.repo.create_git_ref(
+                        ref=f"refs/heads/{screenshots_branch}",
+                        sha=default_branch.commit.sha
+                    )
+                    logger.info(f"✅ Created screenshots branch '{screenshots_branch}'")
+                except GithubException as create_error:
+                    logger.error(f"❌ Failed to create screenshots branch: {create_error.status} - {create_error.data}")
+                    return None
+
+            # Upload image to screenshots branch
+            # Extract and log extension to verify it's preserved
+            ext = screenshot_filename.rsplit('.', 1)[-1] if '.' in screenshot_filename else 'unknown'
+            logger.info(f"📤 Uploading '{screenshot_path}' to branch '{screenshots_branch}'...")
+            logger.info(f"   File extension: .{ext}")
+            try:
+                existing_file = self.repo.get_contents(screenshot_path, ref=screenshots_branch)
+                # Update existing file (PyGithub handles base64 encoding internally)
+                result = self.repo.update_file(
+                    path=screenshot_path,
+                    message=f"Update screenshot: {screenshot_filename}",
+                    content=image_data,
+                    sha=existing_file.sha,
+                    branch=screenshots_branch
+                )
+                logger.info(f"✅ Updated existing screenshot: {screenshot_path} (commit: {result['commit'].sha[:7]})")
+            except GithubException as e:
+                if e.status == 404:
+                    # File doesn't exist, create it
+                    logger.info(f"📝 File doesn't exist, creating new file: {screenshot_path}")
+                    try:
+                        result = self.repo.create_file(
+                            path=screenshot_path,
+                            message=f"Add screenshot: {screenshot_filename}",
+                            content=image_data,
+                            branch=screenshots_branch
+                        )
+                        logger.info(f"✅ Created new screenshot: {screenshot_path} (commit: {result['commit'].sha[:7]})")
+                    except GithubException as create_error:
+                        logger.error(f"❌ Failed to create file: {create_error.status} - {create_error.data}")
+                        return None
+                else:
+                    logger.error(f"❌ GitHub API error checking file: {e.status} - {e.data}")
+                    return None
+
+            # Generate GitHub blob URL with ?raw=true (works for private repos in PR descriptions)
+            blob_url = f"https://github.com/{self.repo_name}/blob/{screenshots_branch}/{screenshot_path}?raw=true"
+
+            logger.info(f"✅ Successfully uploaded image to GitHub")
+            logger.info(f"🔗 Blob URL: {blob_url}")
+            return blob_url
+
+        except Exception as e:
+            logger.exception(f"Failed to upload image to GitHub: {e}")
+            return None
+
+    def get_pending_invitations(self) -> list[dict]:
+        """
+        Get pending repository collaboration invitations for the authenticated user.
+
+        Returns:
+            List of invitation dictionaries with:
+                - id: Invitation ID (used for acceptance)
+                - repository: Dict with full_name, html_url
+                - inviter: Dict with login, html_url
+                - created_at: Invitation timestamp
+        """
+        try:
+            import requests
+
+            headers = {"Authorization": f"token {self.token}"}
+            response = requests.get(
+                "https://api.github.com/user/repository_invitations",
+                headers=headers
+            )
+
+            if response.status_code == 200:
+                invitations = response.json()
+                logger.debug(f"Found {len(invitations)} pending invitation(s)")
+                return invitations
+            elif response.status_code == 401:
+                logger.error("Authentication failed - check GitHub token permissions")
+                return []
+            elif response.status_code == 403:
+                logger.error("Rate limit exceeded or insufficient permissions")
+                return []
+            else:
+                logger.error(f"GitHub API error: {response.status_code} - {response.text}")
+                return []
+
+        except Exception as e:
+            logger.exception(f"Failed to get pending invitations: {e}")
+            return []
+
+    def accept_invitation(self, invitation_id: int) -> bool:
+        """
+        Accept a repository collaboration invitation.
+
+        Args:
+            invitation_id: The invitation ID to accept
+
+        Returns:
+            True if invitation was accepted successfully, False otherwise
+        """
+        try:
+            import requests
+
+            headers = {"Authorization": f"token {self.token}"}
+            response = requests.patch(
+                f"https://api.github.com/user/repository_invitations/{invitation_id}",
+                headers=headers
+            )
+
+            if response.status_code == 204:
+                logger.info(f"Successfully accepted invitation {invitation_id}")
+                return True
+            elif response.status_code == 404:
+                logger.error(f"Invitation {invitation_id} not found or already accepted")
+                return False
+            elif response.status_code == 403:
+                logger.error(f"Permission denied or rate limit exceeded for invitation {invitation_id}")
+                return False
+            else:
+                logger.error(f"Failed to accept invitation {invitation_id}: {response.status_code} - {response.text}")
+                return False
+
+        except Exception as e:
+            logger.exception(f"Failed to accept invitation {invitation_id}: {e}")
+            return False

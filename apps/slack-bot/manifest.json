@@ -1,0 +1,56 @@
+{
+    "display_information": {
+        "name": "Dogwalker",
+        "description": "AI-powered multi-agent coding assistant",
+        "background_color": "#4f8741",
+        "long_description": "Dogwalker orchestrates multiple AI coding agents (\"dogs\") to handle feature requests. Mention @dogwalker with a task description, and a dog will create a PR with the code changes. Example: @dogwalker add rate limiting to /api/login"
+    },
+    "features": {
+        "bot_user": {
+            "display_name": "Dogwalker",
+            "always_online": true
+        }
+    },
+    "oauth_config": {
+        "scopes": {
+            "bot": [
+                "app_mentions:read",
+                "channels:history",
+                "channels:read",
+                "chat:write",
+                "chat:write.public",
+                "files:read",
+                "groups:history",
+                "groups:read",
+                "im:history",
+                "links:read",
+                "links:write",
+                "metadata.message:read",
+                "reactions:read",
+                "remote_files:read",
+                "users.profile:read",
+                "users:read",
+                "reactions:write",
+                "im:read",
+                "im:write"
+            ]
+        }
+    },
+    "settings": {
+        "event_subscriptions": {
+            "bot_events": [
+                "app_mention",
+                "link_shared",
+                "message.channels",
+                "message.groups",
+                "message.im"
+            ]
+        },
+        "interactivity": {
+            "is_enabled": true
+        },
+        "org_deploy_enabled": true,
+        "socket_mode_enabled": true,
+        "token_rotation_enabled": false
+    }
+}

@@ -65,6 +65,15 @@ Dogwalker is a multi-agent AI coding system that automates the path from Slack f
 - Socket Mode (WebSocket connection, no public webhooks needed)
 - Celery (task queue client)
 
+**Important:** The orchestrator uses Slack's **Socket Mode** instead of traditional HTTP webhooks. This design choice enables:
+- **Local-first development** - Run on your laptop without exposing public URLs
+- **No infrastructure needed** - Works without SSL certificates or domain names
+- **Firewall-friendly** - Outbound WebSocket connection from orchestrator to Slack
+- **Real-time bidirectional** - Instant event delivery and response
+- **Simplified deployment** - No need for reverse proxies or load balancers
+
+This means Dogwalker can run entirely on a local machine while still receiving real-time events from Slack.
+
 **Key Files:**
 - `bot.py` - Main entry point, initialization
 - `celery_app.py` - Celery configuration
@@ -115,6 +124,9 @@ Uses modular listener pattern (inspired by [bolt-python-assistant-template](http
 - `dog.py` - Aider wrapper for code editing
 - `dog_communication.py` - Bi-directional Slack communication helper
 - `repo_manager.py` - Git operations (clone, branch, push)
+- `screenshot_tools.py` - Before/after screenshot capture and GitHub upload
+- `web_tools.py` - Website fetching and screenshots for URL references
+- `search_tools.py` - Proactive internet search using DuckDuckGo
 - `celery_app.py` - Celery worker configuration
 
 **Responsibilities:**
@@ -124,19 +136,21 @@ Uses modular listener pattern (inspired by [bolt-python-assistant-template](http
 4. Generate implementation plan using Aider
 5. Push empty branch and create draft PR with plan
 6. Post draft PR to Slack with plan preview
-7. **Check for human feedback** before implementation
-8. Run Aider to implement changes
-9. **Check for human feedback** after implementation
-10. Run self-review phase for code quality improvements
-11. **Check for human feedback** after self-review
-12. Write comprehensive tests and verify they pass
-13. **Check for human feedback** after testing (final checkpoint)
-14. Commit and push final changes
-15. Collect all thread feedback for PR description
-16. Update PR description with complete details and thread feedback
-17. Mark PR as "Ready for Review" (exit draft state)
-18. Post completion to Slack thread
-19. Clean up ephemeral workspace
+7. **Capture before screenshots** (if frontend task) and upload to GitHub
+8. **Check for human feedback** before implementation
+9. Run Aider to implement changes
+10. **Check for human feedback** after implementation
+11. Run self-review phase for code quality improvements
+12. **Check for human feedback** after self-review
+13. Write comprehensive tests and verify they pass
+14. **Check for human feedback** after testing (final checkpoint)
+15. **Capture after screenshots** (if frontend task) and upload to GitHub
+16. Commit and push final changes
+17. Collect all thread feedback for PR description
+18. Update PR description with complete details, thread feedback, and screenshot comparisons
+19. Mark PR as "Ready for Review" (exit draft state)
+20. Post completion to Slack thread
+21. Clean up ephemeral workspace
 
 ### Shared (apps/shared)
 
@@ -144,8 +158,15 @@ Uses modular listener pattern (inspired by [bolt-python-assistant-template](http
 
 **Key Files:**
 - `config.py` - Environment variable management
-- `github_client.py` - GitHub API wrapper (PRs, branches)
+- `github_client.py` - GitHub API wrapper (PRs, branches, screenshot uploads)
 - `slack_utils.py` - Message formatting helpers
+
+**GitHub Client Capabilities:**
+- Create and update pull requests
+- Check branch existence
+- Upload images to dedicated screenshots branch
+- Generate persistent raw.githubusercontent.com URLs
+- Manage dogwalker-screenshots branch lifecycle
 
 **Benefits:**
 - Single source of truth for config
@@ -409,6 +430,178 @@ The following feedback was provided during implementation:
 - Context for why certain decisions were made
 - Audit trail of human involvement
 
+## Screenshot Upload Architecture
+
+**Overview:** For frontend tasks, dogs automatically capture before/after screenshots and upload them to GitHub for persistent hosting.
+
+### GitHub Upload Flow
+
+```
+┌──────────────┐         ┌──────────────┐         ┌──────────────┐
+│  Screenshot  │         │   GitHub     │         │     PR       │
+│   Tools      │         │   Client     │         │ Description  │
+│              │         │   (API)      │         │              │
+└──────┬───────┘         └──────┬───────┘         └──────┬───────┘
+       │                        │                        │
+       │ 1. Capture screenshot  │                        │
+       │    locally (PNG)       │                        │
+       │                        │                        │
+       │ 2. Upload to GitHub    │                        │
+       ├───────────────────────>│                        │
+       │                        │                        │
+       │                        │ 3. Create/update file  │
+       │                        │    on screenshots      │
+       │                        │    branch              │
+       │                        │                        │
+       │ 4. Return GitHub URL   │                        │
+       │<───────────────────────┤                        │
+       │                        │                        │
+       │ 5. Include URL in      │                        │
+       │    PR description      │                        │
+       ├────────────────────────┴───────────────────────>│
+```
+
+### Screenshots Branch Strategy
+
+**Branch Name:** `dogwalker-screenshots`
+
+**Purpose:** Dedicated branch for storing all screenshots across all PRs
+
+**Benefits:**
+- **Persistent URLs** - Screenshots remain accessible even after PRs merge
+- **Centralized Storage** - All screenshots in one place, not scattered across PR branches
+- **No Repo Pollution** - Screenshots don't clutter PR commits or main branch
+- **Free Hosting** - GitHub provides free storage and raw.githubusercontent.com URLs
+
+**File Organization:**
+```
+dogwalker-screenshots branch:
+├── before_home.png
+├── after_home.png
+├── before_about.png
+├── after_about.png
+└── (other screenshots...)
+```
+
+**URL Format:**
+```
+https://raw.githubusercontent.com/{owner}/{repo}/dogwalker-screenshots/{filename}
+```
+
+### GitHub Contents API Usage
+
+**Create Screenshot Branch:**
+```python
+# One-time setup per repository
+default_branch = repo.get_branch(repo.default_branch)
+repo.create_git_ref(
+    ref="refs/heads/dogwalker-screenshots",
+    sha=default_branch.commit.sha
+)
+```
+
+**Upload Screenshot:**
+```python
+# Read and encode image
+with open(image_path, 'rb') as f:
+    image_data = f.read()
+image_b64 = base64.b64encode(image_data).decode('utf-8')
+
+# Create or update file on screenshots branch
+try:
+    existing = repo.get_contents(filename, ref="dogwalker-screenshots")
+    # Update existing
+    repo.update_file(
+        path=filename,
+        message=f"Update screenshot: {filename}",
+        content=image_b64,
+        sha=existing.sha,
+        branch="dogwalker-screenshots"
+    )
+except GithubException:
+    # Create new
+    repo.create_file(
+        path=filename,
+        message=f"Add screenshot: {filename}",
+        content=image_b64,
+        branch="dogwalker-screenshots"
+    )
+```
+
+**Generate URL:**
+```python
+raw_url = f"https://raw.githubusercontent.com/{owner}/{repo}/dogwalker-screenshots/{filename}"
+```
+
+### Screenshot Workflow
+
+**Before Screenshots:**
+1. Dog generates implementation plan
+2. Checks if task is frontend-related (keywords, file extensions)
+3. If yes, starts dev server (auto-detects command)
+4. Extracts relevant URLs from plan (up to 5 pages)
+5. Captures screenshot of each URL using Playwright
+6. **Uploads each screenshot to GitHub** via Contents API
+7. Stores GitHub URLs for later comparison
+
+**After Screenshots:**
+1. After all code changes and testing complete
+2. Restarts dev server with new code
+3. Captures screenshot of same URLs
+4. **Uploads each screenshot to GitHub** via Contents API
+5. Stores GitHub URLs
+
+**PR Description:**
+```markdown
+### 📸 Visual Changes
+
+**Page: /**
+Before: ![](https://raw.githubusercontent.com/owner/repo/dogwalker-screenshots/before_home.png)
+After: ![](https://raw.githubusercontent.com/owner/repo/dogwalker-screenshots/after_home.png)
+```
+
+### Frontend Task Detection
+
+**Keyword Analysis:**
+- Checks plan for: page, component, ui, frontend, interface, react, vue, angular, tailwind, css, style, button, form, navbar, layout, route, etc.
+
+**File Extension Analysis:**
+- Checks modified files for: .tsx, .jsx, .vue, .svelte, .css, .scss, .sass
+
+**If either matches:** Triggers screenshot workflow
+
+### Dev Server Management
+
+**Auto-Detection:**
+1. Reads package.json "scripts" section
+2. Looks for common script names: dev, start, develop, serve
+3. Falls back to framework-specific commands:
+   - Next.js: `npm run dev` (port 3000)
+   - Vite: `npm run dev` (port 5173)
+   - Create React App: `npm start` (port 3000)
+   - Angular: `npm start` (port 4200)
+   - Vue CLI: `npm run serve` (port 8080)
+
+**Lifecycle:**
+1. Start dev server in background subprocess
+2. Poll for readiness (HTTP requests to localhost)
+3. Wait up to 60 seconds for server to respond
+4. Capture screenshots
+5. Terminate dev server gracefully (SIGTERM)
+6. Force kill if doesn't respond (SIGKILL)
+
+### Error Handling
+
+**Upload Failures:**
+- If GitHub upload fails, falls back to relative paths in PR
+- Logs warning but doesn't fail entire task
+- Screenshots still captured locally for debugging
+
+**Dev Server Failures:**
+- If server won't start, skips screenshot workflow
+- Logs warning and continues with implementation
+- Task succeeds even if screenshots unavailable
+
 ## Context Management
 
 **Challenge:** Claude has token limits (200K for Sonnet 4.5)
@@ -458,11 +651,13 @@ Code errors, validation failures, Aider failures → Fail immediately
 
 ## Scalability
 
-### Current (Implemented)
+### Current (Implemented) - Local Deployment
 - 1-N dog workers (configurable via DOGS env var)
 - Parallel task processing with load balancing
 - Single Redis instance for queue + task tracking
 - ~10-30 tasks/day capacity (depends on dog count)
+- Runs on single machine (laptop or workstation)
+- Socket Mode ensures reliable connection without public infrastructure
 
 ### Near-term (Month 2-3)
 - Auto-scaling workers based on queue depth
@@ -499,7 +694,42 @@ Code errors, validation failures, Aider failures → Fail immediately
    - Verify event signatures
    - Limit to specific channels
 
-## Deployment Architecture (Railway)
+## Deployment Architecture
+
+### Local Deployment (Current/Recommended)
+
+```
+┌─────────────────────────────────────────────────────┐
+│              Developer's Laptop/Workstation          │
+│                                                      │
+│  ┌──────────────┐  ┌──────────────┐  ┌───────────┐ │
+│  │ Orchestrator │  │    Worker    │  │   Redis   │ │
+│  │   Process    │  │   Process    │  │  (local)  │ │
+│  │              │  │              │  │           │ │
+│  │ bot.py       │  │ celery worker│  │ localhost │ │
+│  │ Socket Mode  │  │ Aider + Git  │  │   :6379   │ │
+│  └──────┬───────┘  └──────┬───────┘  └─────┬─────┘ │
+│         │                 │                 │       │
+│         └─────────────────┴─────────────────┘       │
+│                     Shared Redis                    │
+└─────────────────────────────────────────────────────┘
+         │                      │
+         v                      v
+   Slack API              GitHub API
+   (Socket Mode           (REST)
+    WebSocket)
+
+Cost: $0 (infrastructure) + API costs (~$3-10/task)
+```
+
+**Benefits:**
+- Zero infrastructure cost
+- Full control and privacy
+- Easy debugging (all logs local)
+- No deployment complexity
+- Works offline (except Slack/GitHub/Anthropic API calls)
+
+### Cloud Deployment (Optional - Railway Example)
 
 ```
 ┌─────────────────────────────────────────────────────┐
@@ -520,16 +750,22 @@ Code errors, validation failures, Aider failures → Fail immediately
          v                      v
    Slack API              GitHub API
    (Socket Mode)          (REST)
+
+Cost: ~$20-40/month (infrastructure) + API costs (~$3-10/task)
 ```
 
-**Services:**
-1. **Orchestrator** - Web service running Slack bot
+**Services (Cloud):**
+1. **Orchestrator** - Web service running Slack bot (Socket Mode)
 2. **Worker** - Worker service running Celery
 3. **Redis** - Managed Redis instance (task queue + results)
 
-**Environment Variables:** Shared across services via Railway project settings
+**Environment Variables:** Shared across services via cloud platform settings
 
-**Cost:** ~$20-40/month (3 services + Redis)
+**When to deploy to cloud:**
+- Need 24/7 availability
+- Multiple team members using the bot
+- Production workloads
+- Don't want to keep laptop running
 
 ## Implemented Enhancements
 
