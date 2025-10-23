@@ -1066,7 +1066,9 @@ Co-Authored-By: Claude <noreply@anthropic.com>"""
 
     def capture_before_screenshots(self, plan: str) -> list[dict[str, str]]:
         """
-        Capture "before" screenshots of frontend pages before implementation.
+        Take screenshots of the frontend page(s) BEFORE making any code changes.
+
+        This captures the current state of the application before implementation begins.
 
         Args:
             plan: Implementation plan
@@ -1124,7 +1126,10 @@ Co-Authored-By: Claude <noreply@anthropic.com>"""
 
     def capture_after_screenshots(self, before_screenshots: list[dict[str, str]]) -> list[dict[str, str]]:
         """
-        Capture "after" screenshots of the same URLs as before screenshots.
+        Take screenshots of the frontend page(s) AFTER making ALL code changes.
+
+        This captures the final state of the application after all implementation,
+        self-review, and testing is complete. Screenshots the same URLs as before.
 
         Args:
             before_screenshots: List of before screenshot info (used to get URLs)

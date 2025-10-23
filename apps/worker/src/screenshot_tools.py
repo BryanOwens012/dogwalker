@@ -264,6 +264,8 @@ class ScreenshotTools:
         """
         Check if a URL exists and returns a valid response (not 404/500).
 
+        Some dev servers don't respond to HEAD requests, so we try GET if HEAD fails.
+
         Args:
             url: URL to validate
 
@@ -272,14 +274,35 @@ class ScreenshotTools:
         """
         try:
             import requests
-            response = requests.head(url, timeout=5, allow_redirects=True)
-            # Accept 200-399 status codes (success and redirects)
+
+            # Try HEAD first (faster)
+            try:
+                response = requests.head(url, timeout=5, allow_redirects=True)
+                # Accept 200-399 status codes (success and redirects)
+                if 200 <= response.status_code < 400:
+                    logger.info(f"✅ URL validated: {url} (HTTP {response.status_code})")
+                    return True
+                elif response.status_code == 405:
+                    # Method Not Allowed - try GET instead
+                    logger.info(f"HEAD not allowed on {url}, trying GET...")
+                else:
+                    logger.info(f"❌ URL validation failed for {url}: HTTP {response.status_code}")
+                    return False
+            except Exception:
+                # HEAD failed, try GET
+                logger.info(f"HEAD request failed for {url}, trying GET...")
+
+            # Try GET if HEAD failed or returned 405
+            response = requests.get(url, timeout=5, allow_redirects=True)
             is_valid = 200 <= response.status_code < 400
-            if not is_valid:
-                logger.info(f"URL validation failed for {url}: HTTP {response.status_code}")
+            if is_valid:
+                logger.info(f"✅ URL validated: {url} (HTTP {response.status_code})")
+            else:
+                logger.info(f"❌ URL validation failed for {url}: HTTP {response.status_code}")
             return is_valid
+
         except Exception as e:
-            logger.warning(f"URL validation failed for {url}: {e}")
+            logger.warning(f"❌ URL validation failed for {url}: {e}")
             return False
 
     def capture_multiple_screenshots(
