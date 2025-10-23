@@ -11,11 +11,12 @@ export const viewport: Viewport = {
 
 export const metadata: Metadata = {
   title: {
-    default: "Dogwalker - Multi-Agent AI Coding System",
+    default:
+      "Dogwalker - Slack bot that turns feature requests into production-ready pull requests",
     template: "%s | Dogwalker",
   },
   description:
-    "Open-source, self-hosted AI coding system that turns Slack messages into production-ready pull requests. Multiple AI agents work in parallel, write tests, and deliver code ready for human review.",
+    "Slack bot that turns feature requests into production-ready pull requests.",
   keywords: [
     "AI coding",
     "automation",
@@ -27,9 +28,9 @@ export const metadata: Metadata = {
     "DevOps",
     "CI/CD",
   ],
-  authors: [{ name: "Dogwalker Contributors" }],
-  creator: "Dogwalker",
-  publisher: "Dogwalker",
+  authors: [{ name: "Bryan Owens" }],
+  creator: "Bryan Owens",
+  publisher: "Bryan Owens",
 };
 
 const RootLayout = ({
@@ -39,9 +40,7 @@ const RootLayout = ({
 }>) => {
   return (
     <html lang="en">
-      <body className="font-sans antialiased">
-        {children}
-      </body>
+      <body className="font-sans antialiased">{children}</body>
     </html>
   );
 };
