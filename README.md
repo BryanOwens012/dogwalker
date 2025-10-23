@@ -6,7 +6,7 @@ Built solo in 2 days using AI-assisted development.
 
 ## See It In Action
 
-Here's a real example: A developer asked Dogwalker to clone a UI design in Slack. The AI dog (Coregi) generated a plan, implemented the changes, and created a production-ready PR—all in minutes.
+After the Dogwalker is @-mentioned, it gets an available AI dog (Coregi) to generate a plan, implement changes, and open a PR.
 
 <p align="center">
   <img src="apps/frontend/public/slack-thread-example.png" alt="Real Slack thread showing Dogwalker in action" width="600">
@@ -153,11 +153,7 @@ Contributions welcome! This is community-driven software.
 - **Factory AI** - Enterprise multi-agent coding
 - **GitHub Copilot Workspace** - IDE-integrated assistant
 
-**What makes Dogwalker different:** Fully open source (MIT), self-hosted (you control your data), highly customizable, Slack-native with bi-directional communication, multi-agent parallel processing.
-
-## License
-
-MIT License - see [LICENSE](LICENSE) for details.
+**What makes Dogwalker different:** Open source, self-hosted (you control your data), highly customizable, Slack-native with bi-directional communication, multi-agent parallel processing.
 
 ## References
 
