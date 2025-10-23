@@ -138,6 +138,11 @@ DOGS='[
 
 See `.env.example` for full configuration options.
 
+## Limitations
+
+- Dogs aren't able to handle more than 200k tokens of context. Plan requests accordingly.
+- When a dog crashes, it loses all its state and must restart with a clean slate.
+
 ## Contributing
 
 Contributions welcome! This is community-driven software.

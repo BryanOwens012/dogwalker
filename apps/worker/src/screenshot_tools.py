@@ -260,6 +260,28 @@ class ScreenshotTools:
             logger.error(f"Failed to capture screenshot of {url}: {e}")
             return None
 
+    def validate_url(self, url: str) -> bool:
+        """
+        Check if a URL exists and returns a valid response (not 404/500).
+
+        Args:
+            url: URL to validate
+
+        Returns:
+            True if URL is valid and accessible, False otherwise
+        """
+        try:
+            import requests
+            response = requests.head(url, timeout=5, allow_redirects=True)
+            # Accept 200-399 status codes (success and redirects)
+            is_valid = 200 <= response.status_code < 400
+            if not is_valid:
+                logger.info(f"URL validation failed for {url}: HTTP {response.status_code}")
+            return is_valid
+        except Exception as e:
+            logger.warning(f"URL validation failed for {url}: {e}")
+            return False
+
     def capture_multiple_screenshots(
         self,
         urls: list[str],
@@ -267,6 +289,7 @@ class ScreenshotTools:
     ) -> list[dict[str, str]]:
         """
         Capture screenshots of multiple URLs and upload to GitHub.
+        Only screenshots URLs that return valid HTTP responses (not 404s).
 
         Args:
             urls: List of URLs to screenshot
@@ -278,6 +301,19 @@ class ScreenshotTools:
         results = []
 
         for i, url in enumerate(urls, 1):
+            # Convert relative URLs to absolute for validation
+            full_url = url
+            if url.startswith("/"):
+                if not self.dev_server_port:
+                    logger.warning(f"Cannot validate relative URL {url} - dev server not running")
+                    continue
+                full_url = f"http://localhost:{self.dev_server_port}{url}"
+
+            # Validate URL before screenshotting
+            if not self.validate_url(full_url):
+                logger.info(f"Skipping screenshot of {url} - URL not accessible")
+                continue
+
             # Generate filename from URL
             url_slug = url.strip("/").replace("/", "_").replace(":", "").replace("?", "_")[:50]
             if not url_slug:
@@ -334,21 +370,10 @@ class ScreenshotTools:
         route_patterns = re.findall(r'["\'](/[\w/-]*)["\']', plan)
         urls.extend(route_patterns)
 
-        # Blacklist of words that are NOT routes (common false positives)
-        # These are descriptive words that often appear before "page" in plans
-        blacklist = {
-            'home', 'main', 'index',  # Already handled specially
-            'existing', 'target', 'following', 'new', 'current', 'previous',
-            'next', 'same', 'landing', 'error', 'loading', 'default',
-            'custom', 'dynamic', 'static', 'single', 'multiple', 'first',
-            'last', 'initial', 'final', 'base', 'parent', 'child', 'root',
-        }
-
-        # Look for page references: "about page", "dashboard page", etc.
+        # Look for page references: "home page", "about page", etc.
         page_refs = re.findall(r'(\w+)\s+page', plan.lower())
         for page in page_refs:
-            # Only add if not in blacklist and looks like a real route name
-            if page not in blacklist and len(page) > 2:  # Avoid single/two letter matches
+            if page not in ['home', 'main', 'index']:
                 urls.append(f"/{page}")
 
         # Remove duplicates and sort
