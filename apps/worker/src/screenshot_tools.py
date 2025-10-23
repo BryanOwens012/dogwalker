@@ -1,11 +1,12 @@
 """Frontend screenshot tools for visual before/after comparison."""
 
 import logging
+import os
 import subprocess
 import time
 import signal
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Any
 from playwright.sync_api import sync_playwright, TimeoutError as PlaywrightTimeout
 
 logger = logging.getLogger(__name__)
@@ -14,7 +15,7 @@ logger = logging.getLogger(__name__)
 class ScreenshotTools:
     """Tools for capturing before/after screenshots of frontend changes."""
 
-    def __init__(self, repo_path: Path, work_dir: Path, github_client: Optional[any] = None):
+    def __init__(self, repo_path: Path, work_dir: Path, github_client: Optional[Any] = None):
         """
         Initialize ScreenshotTools.
 
@@ -141,7 +142,7 @@ class ScreenshotTools:
                 cwd=self.repo_path,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
-                preexec_fn=None if subprocess.os.name == 'nt' else lambda: signal.signal(signal.SIGINT, signal.SIG_IGN)
+                preexec_fn=None if os.name == 'nt' else lambda: signal.signal(signal.SIGINT, signal.SIG_IGN)
             )
 
             # Wait for server to be ready

@@ -2,7 +2,7 @@
 
 import logging
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Any
 from aider.coders import Coder
 from aider.models import Model
 from aider.io import InputOutput
@@ -26,9 +26,9 @@ class Dog:
         repo_path: Path,
         model_name: str = "anthropic/claude-sonnet-4-20250514",  # Aider requires provider prefix
         map_tokens: int = 512,  # Reduced from 1024 to leave headroom for web/search context
-        communication: Optional[any] = None,  # DogCommunication instance for bi-directional Slack
-        search_tools: Optional[any] = None,  # SearchTools instance for proactive web searching
-        screenshot_tools: Optional[any] = None  # ScreenshotTools instance for before/after screenshots
+        communication: Optional[Any] = None,  # DogCommunication instance for bi-directional Slack
+        search_tools: Optional[Any] = None,  # SearchTools instance for proactive web searching
+        screenshot_tools: Optional[Any] = None  # ScreenshotTools instance for before/after screenshots
     ):
         """
         Initialize Dog with Aider.
