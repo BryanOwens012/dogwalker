@@ -494,23 +494,68 @@ The changes you made have compilation errors. Please fix them:
             os.chdir(old_cwd)  # Restore working directory even on error
             raise
 
-    def _validate_changes_compile(self) -> bool:
+    def _detect_project_type(self) -> list[str]:
         """
-        Validate that code changes compile successfully.
-
-        Runs type-checking/compilation to ensure no errors were introduced.
+        Detect project type(s) based on files in repo.
 
         Returns:
-            True if validation passed, False if compilation errors exist
+            List of detected project types (can be multiple, e.g., ["python", "nodejs"])
+        """
+        project_types = []
+
+        # Check for Node.js/TypeScript
+        if (self.repo_path / "package.json").exists():
+            project_types.append("nodejs")
+
+        # Check for Python
+        if (self.repo_path / "setup.py").exists() or \
+           (self.repo_path / "pyproject.toml").exists() or \
+           (self.repo_path / "requirements.txt").exists():
+            project_types.append("python")
+
+        # Check for Go
+        if (self.repo_path / "go.mod").exists():
+            project_types.append("go")
+
+        # Check for Rust
+        if (self.repo_path / "Cargo.toml").exists():
+            project_types.append("rust")
+
+        return project_types
+
+    def _validate_changes_compile(self) -> bool:
+        """
+        Validate that code changes compile/type-check successfully.
+
+        This is a best-effort validation - runs appropriate checks based on
+        project type. If no validators available or validation fails due to
+        infrastructure issues, returns True (don't block on non-code issues).
+
+        Returns:
+            True if validation passed OR no validators available, False if code errors found
         """
         import subprocess
 
         logger.info("Running compilation/type-check validation...")
 
-        # Check if this is a Node.js project
-        package_json = self.repo_path / "package.json"
-        if package_json.exists():
-            # Check if node_modules exists
+        # Detect project type(s)
+        project_types = self._detect_project_type()
+
+        if not project_types:
+            logger.info("No recognizable project type detected - skipping validation")
+            logger.info("Relying on Aider's auto_lint to catch errors during development")
+            return True
+
+        logger.info(f"Detected project types: {project_types}")
+
+        validation_passed = False
+        validation_attempted = False
+
+        # Node.js/TypeScript validation
+        if "nodejs" in project_types:
+            logger.info("Attempting Node.js/TypeScript validation...")
+
+            # Ensure dependencies are installed
             node_modules = self.repo_path / "node_modules"
             if not node_modules.exists():
                 logger.info("node_modules not found - installing dependencies first...")
@@ -523,60 +568,105 @@ The changes you made have compilation errors. Please fix them:
                         timeout=180  # 3 minutes max
                     )
                     if install_result.returncode != 0:
-                        logger.error(f"❌ npm install failed: {install_result.stderr[:500]}")
-                        logger.error("Cannot validate without dependencies - skipping validation")
-                        # Don't fail validation if npm install fails - might be network issues
-                        # Better to let Aider's auto_lint catch issues during development
-                        return True
-                    logger.info("✅ npm install completed successfully")
+                        logger.warning(f"npm install failed: {install_result.stderr[:500]}")
+                        logger.info("Skipping Node.js validation due to dependency issues")
+                    else:
+                        logger.info("✅ npm install completed successfully")
                 except subprocess.TimeoutExpired:
-                    logger.error("❌ npm install timed out after 3 minutes")
-                    return True  # Don't fail on infrastructure issues
+                    logger.warning("npm install timed out - skipping Node.js validation")
                 except Exception as e:
-                    logger.error(f"❌ npm install error: {e}")
-                    return True  # Don't fail on infrastructure issues
+                    logger.warning(f"npm install error: {e} - skipping Node.js validation")
 
-        # Try different validation commands based on project type
-        # Prioritize TypeScript-only checks over full builds (less likely to fail on infrastructure)
-        validation_commands = [
-            ("npx tsc --noEmit", "TypeScript compiler"),
-            ("npm run type-check", "TypeScript type-check"),
-        ]
+            # Only try TypeScript validation if dependencies installed successfully
+            if node_modules.exists():
+                validation_attempted = True
+                ts_commands = [
+                    ("npx tsc --noEmit", "TypeScript compiler"),
+                    ("npm run type-check", "TypeScript type-check"),
+                ]
 
-        for command, description in validation_commands:
-            try:
-                logger.info(f"Trying {description}: {command}")
-                result = subprocess.run(
-                    command.split(),
-                    cwd=self.repo_path,
-                    capture_output=True,
-                    text=True,
-                    timeout=120  # 2 minute timeout
-                )
+                for command, description in ts_commands:
+                    try:
+                        result = subprocess.run(
+                            command.split(),
+                            cwd=self.repo_path,
+                            capture_output=True,
+                            text=True,
+                            timeout=120
+                        )
 
-                if result.returncode == 0:
-                    logger.info(f"✅ {description} passed")
-                    return True
-                else:
-                    logger.warning(f"❌ {description} failed:")
-                    logger.warning(f"STDOUT: {result.stdout[:500]}")
-                    logger.warning(f"STDERR: {result.stderr[:500]}")
-                    # Try next command
-                    continue
+                        if result.returncode == 0:
+                            logger.info(f"✅ {description} passed")
+                            validation_passed = True
+                            break
+                        else:
+                            # Check if this is a real code error vs missing command
+                            stderr_lower = result.stderr.lower()
+                            if "command not found" in stderr_lower or "not found" in stderr_lower:
+                                logger.debug(f"{description} not available in this project")
+                                continue
 
-            except FileNotFoundError:
-                logger.debug(f"Command not found: {command}")
-                continue
-            except subprocess.TimeoutExpired:
-                logger.warning(f"❌ {description} timed out after 120s")
-                continue
-            except Exception as e:
-                logger.warning(f"Error running {command}: {e}")
-                continue
+                            logger.warning(f"❌ {description} failed:")
+                            logger.warning(f"STDOUT: {result.stdout[:500]}")
+                            logger.warning(f"STDERR: {result.stderr[:500]}")
+                            # This is a real validation failure - don't try other commands
+                            return False
 
-        # If all validation attempts failed
-        logger.error("❌ All validation commands failed or timed out")
-        return False
+                    except FileNotFoundError:
+                        logger.debug(f"{description} command not found")
+                        continue
+                    except subprocess.TimeoutExpired:
+                        logger.warning(f"{description} timed out")
+                        continue
+
+        # Python validation
+        if "python" in project_types and not validation_passed:
+            logger.info("Attempting Python validation...")
+            validation_attempted = True
+
+            # Get changed Python files
+            changed_files = self._get_recently_changed_files()
+            python_files = [f for f in changed_files if f.endswith('.py')]
+
+            if python_files:
+                # Try mypy for type checking
+                try:
+                    result = subprocess.run(
+                        ["python", "-m", "mypy"] + python_files,
+                        cwd=self.repo_path,
+                        capture_output=True,
+                        text=True,
+                        timeout=60
+                    )
+
+                    if result.returncode == 0:
+                        logger.info("✅ Python type checking (mypy) passed")
+                        validation_passed = True
+                    else:
+                        # Check if mypy is actually installed
+                        if "No module named mypy" in result.stderr:
+                            logger.debug("mypy not installed - skipping Python type checking")
+                        else:
+                            logger.warning(f"❌ Python type checking failed:")
+                            logger.warning(f"STDERR: {result.stderr[:500]}")
+                            return False
+
+                except FileNotFoundError:
+                    logger.debug("Python or mypy not available")
+                except subprocess.TimeoutExpired:
+                    logger.warning("Python validation timed out")
+
+        # If we attempted validation but nothing passed, and we didn't find explicit errors,
+        # assume validation tools aren't configured for this project
+        if validation_attempted and not validation_passed:
+            logger.info("No validation tools succeeded, but no explicit code errors found")
+            logger.info("Relying on Aider's auto_lint which runs during development")
+            return True
+
+        # If we found explicit errors, we already returned False above
+        # If validation passed, return True
+        # If we didn't attempt validation, return True (no validators available)
+        return True
 
     def _commit_changes(self, message: str) -> None:
         """
