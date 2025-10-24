@@ -619,6 +619,36 @@ class ScreenshotTools:
             logger.warning(f"❌ URL validation failed for {url}: {e}")
             return False
 
+    def _warm_up_pages(self, urls: list[str]) -> None:
+        """
+        Pre-fetch URLs to trigger Next.js compilation before screenshotting.
+
+        Next.js compiles pages on-demand, so we need to request them first
+        to ensure changes are visible in screenshots.
+
+        Args:
+            urls: List of URLs to warm up
+        """
+        import requests
+
+        logger.info(f"Warming up {len(urls)} pages to trigger compilation...")
+
+        for url in urls:
+            full_url = url
+            if url.startswith("/"):
+                full_url = f"http://localhost:{self.dev_server_port}{url}"
+
+            try:
+                # Make request to trigger compilation (don't care about response)
+                requests.get(full_url, timeout=15)
+                logger.info(f"  ✅ Warmed up: {url}")
+            except Exception as e:
+                logger.warning(f"  ⚠️  Failed to warm up {url}: {e}")
+
+        # Give server a moment to finish any async compilation
+        logger.info("Waiting 5s for compilation to complete...")
+        time.sleep(5)
+
     def capture_multiple_screenshots(
         self,
         urls: list[str],
@@ -635,6 +665,9 @@ class ScreenshotTools:
         Returns:
             List of dicts with url, filename, path (local), and github_url (if uploaded)
         """
+        # Warm up pages first to trigger Next.js compilation
+        self._warm_up_pages(urls)
+
         results = []
 
         for i, url in enumerate(urls, 1):

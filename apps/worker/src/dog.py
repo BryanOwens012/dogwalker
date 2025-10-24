@@ -748,9 +748,10 @@ Steps to fix:
             old_cwd = os.getcwd()
             os.chdir(self.repo_path)
 
-            # Get files changed in last 10 commits (should cover all changes made during task)
+            # Get files from recent commits (works with fresh clones that have <10 commits)
+            # Using git log instead of git diff to avoid "HEAD~10 doesn't exist" errors
             result = subprocess.run(
-                ["git", "diff", "--name-only", "HEAD~10..HEAD"],
+                ["git", "log", "--name-only", "--pretty=format:", "-10"],
                 capture_output=True,
                 text=True,
                 timeout=5
@@ -759,7 +760,8 @@ Steps to fix:
             os.chdir(old_cwd)
 
             if result.returncode == 0:
-                files = [f.strip() for f in result.stdout.strip().split('\n') if f.strip()]
+                # Parse output and deduplicate files
+                files = list(set([f.strip() for f in result.stdout.strip().split('\n') if f.strip()]))
                 logger.info(f"Found {len(files)} changed files: {files}")
                 return files
             else:
