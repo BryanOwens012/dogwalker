@@ -70,6 +70,63 @@ class ScreenshotTools:
         logger.warning("Could not detect dev server command")
         return None
 
+    def is_port_available(self, port: int) -> bool:
+        """
+        Check if a port is available.
+
+        Args:
+            port: Port number to check
+
+        Returns:
+            True if port is available, False otherwise
+        """
+        import socket
+        try:
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+                sock.settimeout(1)
+                result = sock.connect_ex(('localhost', port))
+                return result != 0  # Port is available if connection fails
+        except Exception as e:
+            logger.warning(f"Error checking port {port}: {e}")
+            return False
+
+    def _detect_port_from_output(self, output_lines: list[str]) -> Optional[int]:
+        """
+        Try to detect the actual port from dev server output.
+
+        Args:
+            output_lines: Lines of server output
+
+        Returns:
+            Detected port number or None
+        """
+        import re
+
+        # Common patterns in dev server output
+        patterns = [
+            r'localhost:(\d+)',
+            r'http://.*:(\d+)',
+            r'port\s+(\d+)',
+            r'PORT\s*=\s*(\d+)',
+            r'listening.*?(\d+)',
+            r'started.*?(\d+)',
+        ]
+
+        for line in reversed(output_lines):  # Check recent output first
+            line_lower = line.lower()
+            for pattern in patterns:
+                match = re.search(pattern, line_lower)
+                if match:
+                    try:
+                        port = int(match.group(1))
+                        if 1024 <= port <= 65535:  # Valid port range
+                            logger.info(f"Detected port {port} from output: {line.strip()}")
+                            return port
+                    except (ValueError, IndexError):
+                        continue
+
+        return None
+
     def detect_dev_server_port(self, command: str) -> int:
         """
         Detect the port the dev server will run on.
@@ -94,12 +151,44 @@ class ScreenshotTools:
 
         return 3000  # Default fallback
 
-    def start_dev_server(self, timeout: int = 120) -> bool:
+    def find_available_port(self, preferred_port: int) -> Optional[int]:
+        """
+        Find an available port, starting with the preferred port.
+
+        Args:
+            preferred_port: The preferred port to try first
+
+        Returns:
+            Available port number, or None if no ports available
+        """
+        # Try preferred port first
+        if self.is_port_available(preferred_port):
+            logger.info(f"Preferred port {preferred_port} is available")
+            return preferred_port
+
+        logger.warning(f"Preferred port {preferred_port} is not available, trying alternatives...")
+
+        # Try common alternative ports
+        alternative_ports = [3001, 3002, 3003, 5173, 5174, 8080, 8081, 4200, 4201]
+
+        # Remove preferred port from alternatives if it's there
+        alternative_ports = [p for p in alternative_ports if p != preferred_port]
+
+        for port in alternative_ports:
+            if self.is_port_available(port):
+                logger.info(f"Found available alternative port: {port}")
+                return port
+
+        logger.error("No available ports found")
+        return None
+
+    def start_dev_server(self, timeout: int = 120, preferred_port: Optional[int] = None) -> bool:
         """
         Start the development server and wait for it to be ready.
 
         Args:
             timeout: Maximum seconds to wait for server to start
+            preferred_port: Preferred port to use (if None, auto-detect)
 
         Returns:
             True if server started successfully, False otherwise
@@ -109,7 +198,18 @@ class ScreenshotTools:
             logger.warning("No dev server command detected, skipping server start")
             return False
 
-        self.dev_server_port = self.detect_dev_server_port(command)
+        # Determine preferred port
+        if preferred_port is None:
+            preferred_port = self.detect_dev_server_port(command)
+
+        # Find an available port
+        available_port = self.find_available_port(preferred_port)
+        if available_port is None:
+            logger.error("No available ports found - cannot start dev server")
+            return False
+
+        self.dev_server_port = available_port
+        logger.info(f"Using port {self.dev_server_port} for dev server")
 
         # Install dependencies if node_modules doesn't exist
         node_modules = self.repo_path / "node_modules"
@@ -136,19 +236,70 @@ class ScreenshotTools:
         logger.info(f"Starting dev server: {command}")
 
         try:
+            # Set PORT environment variable so dev server uses our selected port
+            env = os.environ.copy()
+            env['PORT'] = str(self.dev_server_port)
+
             # Start the dev server in the background
             self.dev_server_process = subprocess.Popen(
                 command.split(),
                 cwd=self.repo_path,
                 stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
+                stderr=subprocess.STDOUT,  # Merge stderr into stdout for easier reading
+                env=env,  # Pass environment with PORT set
+                bufsize=1,  # Line buffered
+                universal_newlines=True,  # Text mode
                 preexec_fn=None if os.name == 'nt' else lambda: signal.signal(signal.SIGINT, signal.SIG_IGN)
             )
+
+            # Capture server output in background
+            server_output_lines = []
+
+            def read_output():
+                """Read server output in a non-blocking way."""
+                if self.dev_server_process and self.dev_server_process.stdout:
+                    try:
+                        # On Unix/macOS, use select for non-blocking read
+                        if os.name != 'nt':
+                            import select
+                            ready, _, _ = select.select([self.dev_server_process.stdout], [], [], 0.1)
+                            if ready:
+                                line = self.dev_server_process.stdout.readline()
+                                if line:
+                                    server_output_lines.append(line.strip())
+                                    logger.debug(f"Dev server: {line.strip()}")
+                                    return line
+                        else:
+                            # On Windows, just try to read (process is in text mode with buffering)
+                            # This is less ideal but works
+                            import threading
+                            line_holder = [None]
+
+                            def read_line():
+                                try:
+                                    line_holder[0] = self.dev_server_process.stdout.readline()
+                                except Exception:
+                                    pass
+
+                            thread = threading.Thread(target=read_line)
+                            thread.daemon = True
+                            thread.start()
+                            thread.join(timeout=0.1)
+
+                            if line_holder[0]:
+                                server_output_lines.append(line_holder[0].strip())
+                                logger.debug(f"Dev server: {line_holder[0].strip()}")
+                                return line_holder[0]
+                    except Exception as e:
+                        logger.debug(f"Error reading output: {e}")
+                return None
 
             # Wait for server to be ready
             start_time = time.time()
             last_check = start_time
             while time.time() - start_time < timeout:
+                # Read any new output
+                read_output()
                 try:
                     import requests
                     response = requests.get(f"http://localhost:{self.dev_server_port}", timeout=2)
@@ -161,16 +312,17 @@ class ScreenshotTools:
                 # Check if process died
                 returncode = self.dev_server_process.poll()
                 if returncode is not None:
-                    # Process exited - read output to see why
-                    stdout, stderr = self.dev_server_process.communicate(timeout=1)
-                    stdout_text = stdout.decode('utf-8', errors='ignore')[:500] if stdout else ""
-                    stderr_text = stderr.decode('utf-8', errors='ignore')[:500] if stderr else ""
+                    # Process exited - read any remaining output
+                    while read_output():
+                        pass
 
                     logger.error(f"❌ Dev server process died with exit code {returncode}")
-                    if stdout_text:
-                        logger.error(f"STDOUT: {stdout_text}")
-                    if stderr_text:
-                        logger.error(f"STDERR: {stderr_text}")
+                    if server_output_lines:
+                        logger.error(f"Server output (last 20 lines):")
+                        for line in server_output_lines[-20:]:
+                            logger.error(f"  {line}")
+                    else:
+                        logger.error("No server output captured")
 
                     return False
 
@@ -184,13 +336,38 @@ class ScreenshotTools:
                 time.sleep(2)
 
             # Timeout reached - dev server process is running but not responding
+            # Read any remaining output
+            while read_output():
+                pass
+
             logger.warning(f"❌ Dev server did not become ready within {timeout}s")
-            logger.error("Dev server process is running but not responding to HTTP requests")
+            logger.error("Dev server process is running but not responding to HTTP requests on expected port")
+
+            # Try to detect actual port from output
+            detected_port = self._detect_port_from_output(server_output_lines)
+            if detected_port and detected_port != self.dev_server_port:
+                logger.error(f"⚠️ Server may have started on port {detected_port} instead of {self.dev_server_port}")
+                logger.error(f"This dev server may not respect the PORT environment variable")
+                # Try the detected port
+                try:
+                    import requests
+                    response = requests.get(f"http://localhost:{detected_port}", timeout=2)
+                    if response.status_code < 500:
+                        logger.info(f"✅ Server IS running on port {detected_port}! Using this port instead.")
+                        self.dev_server_port = detected_port
+                        return True
+                except Exception:
+                    pass
+
+            logger.error(f"Server output (last 30 lines):")
+            for line in server_output_lines[-30:]:
+                logger.error(f"  {line}")
+
             logger.error(f"Possible causes:")
-            logger.error(f"  1. Port {self.dev_server_port} is already in use (EADDRINUSE)")
-            logger.error(f"  2. Dev server encountered errors during startup")
-            logger.error(f"  3. Dev server is waiting for user input")
-            logger.error(f"  4. Code changes introduced errors that prevent server from starting")
+            logger.error(f"  1. Dev server encountered errors during startup (check output above)")
+            logger.error(f"  2. Dev server is waiting for user input")
+            logger.error(f"  3. Code changes introduced errors that prevent server from starting")
+            logger.error(f"  4. Dev server ignoring PORT environment variable (tried port {self.dev_server_port})")
 
             # Kill the non-responsive process
             if self.dev_server_process and self.dev_server_process.poll() is None:

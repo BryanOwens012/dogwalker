@@ -464,7 +464,10 @@ Follow the commit strategy you outlined in the implementation plan.
         logger.info("Starting self-review of code changes")
 
         review_prompt = """
-Review the changes you just made with a critical eye. Consider:
+IMPORTANT: First, check what code changes were recently committed by running `git log -5 --oneline` and `git diff HEAD~5..HEAD`.
+Add the changed files to the chat so you can review them.
+
+Review the recent code changes with a critical eye. Consider:
 
 1. **Code Quality**: Is the code clean, readable, and maintainable?
 2. **Best Practices**: Does it follow the project's coding standards and patterns?
@@ -534,7 +537,10 @@ IMPORTANT - Commit Strategy:
         logger.info("Writing comprehensive tests")
 
         test_prompt = """
-Write comprehensive tests for the changes you just made. Follow these guidelines:
+IMPORTANT: First, check what code changes were recently committed by running `git log -5 --oneline` and `git diff HEAD~5..HEAD`.
+Add the changed files to the chat so you can write appropriate tests for them.
+
+Write comprehensive tests for the recent code changes. Follow these guidelines:
 
 1. **Test Coverage**: Write tests that cover:
    - Happy path (normal expected behavior)
@@ -1165,6 +1171,7 @@ Co-Authored-By: Claude <noreply@anthropic.com>"""
                     raise Exception("Server not healthy")
             except Exception as e:
                 logger.warning(f"Dev server not responding: {e} - will restart")
+                old_port = self.screenshot_tools.dev_server_port
                 self.screenshot_tools.stop_dev_server()
 
                 # Wait for port to be released
@@ -1172,9 +1179,14 @@ Co-Authored-By: Claude <noreply@anthropic.com>"""
                 time.sleep(3)
 
                 logger.info("Restarting dev server with new code...")
-                if not self.screenshot_tools.start_dev_server():
+                # Try to restart - start_dev_server will find an available port automatically
+                # If the old port is still not available, it will use an alternative
+                if not self.screenshot_tools.start_dev_server(preferred_port=old_port):
                     logger.error("❌ Failed to restart dev server - skipping after screenshots")
                     return []
+
+                if self.screenshot_tools.dev_server_port != old_port:
+                    logger.warning(f"⚠️ Dev server restarted on different port: {old_port} -> {self.screenshot_tools.dev_server_port}")
                 logger.info("✅ Dev server restarted successfully")
         else:
             # Server not running - start fresh
