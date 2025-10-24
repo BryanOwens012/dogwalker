@@ -141,6 +141,7 @@ See `.env.example` for full configuration options.
 ## Limitations
 
 - The quality of the generated code is nondeterministic. Always review before merging. It might take a few tries to get it right.
+- The code generation part (Aider) is particularly buggy. Will need improvement.
 - Dogs aren't able to handle more than 200k tokens of context. Plan requests accordingly. E.g., commit large files separately.
 - When a dog crashes, it loses all its state and must restart with a clean slate.
 
