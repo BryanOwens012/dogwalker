@@ -586,6 +586,21 @@ Steps to fix:
             # Only try TypeScript validation if dependencies installed successfully
             if node_modules.exists():
                 validation_attempted = True
+
+                # Detect if this is a monorepo and find TypeScript config
+                ts_project_dir = self.repo_path
+                tsconfig_locations = [
+                    self.repo_path / "tsconfig.json",  # Root
+                    self.repo_path / "apps" / "frontend" / "tsconfig.json",  # Common monorepo pattern
+                    self.repo_path / "packages" / "frontend" / "tsconfig.json",
+                ]
+
+                for location in tsconfig_locations:
+                    if location.exists():
+                        ts_project_dir = location.parent
+                        logger.info(f"Found tsconfig.json at {ts_project_dir}")
+                        break
+
                 ts_commands = [
                     ("npx tsc --noEmit", "TypeScript compiler"),
                     ("npm run type-check", "TypeScript type-check"),
@@ -595,7 +610,7 @@ Steps to fix:
                     try:
                         result = subprocess.run(
                             command.split(),
-                            cwd=self.repo_path,
+                            cwd=ts_project_dir,  # Run from TypeScript project directory
                             capture_output=True,
                             text=True,
                             timeout=120
