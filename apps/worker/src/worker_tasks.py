@@ -428,7 +428,7 @@ def run_coding_task(
             feedback_prompt = f"""{communication.format_feedback_for_prompt(post_impl_feedback)}
 
 Please make these changes now."""
-            dog.run_task(feedback_prompt, web_context=web_context)
+            dog.run_task(feedback_prompt, web_context=web_context, allow_no_changes=True)
 
         # Step 8: Run self-review
         logger.info("Running self-review on code changes")
@@ -448,7 +448,7 @@ Please make these changes now."""
             feedback_prompt = f"""{communication.format_feedback_for_prompt(post_review_feedback)}
 
 Please make these changes now."""
-            dog.run_task(feedback_prompt, web_context=web_context)
+            dog.run_task(feedback_prompt, web_context=web_context, allow_no_changes=True)
 
         # Step 9: Write and run comprehensive tests
         logger.info("Writing and running comprehensive tests")
@@ -470,7 +470,7 @@ Please make these changes now."""
             feedback_prompt = f"""{communication.format_feedback_for_prompt(final_feedback)}
 
 Please make these changes now."""
-            dog.run_task(feedback_prompt, web_context=web_context)
+            dog.run_task(feedback_prompt, web_context=web_context, allow_no_changes=True)
 
             # Re-run tests to ensure changes didn't break anything
             logger.info("Re-running tests after incorporating final feedback")

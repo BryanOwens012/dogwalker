@@ -339,7 +339,8 @@ Provide ONLY "NONE" or the queries, no explanations."""
         self,
         task_description: str,
         image_files: Optional[list[str]] = None,
-        web_context: Optional[str] = None
+        web_context: Optional[str] = None,
+        allow_no_changes: bool = False
     ) -> bool:
         """
         Execute a coding task using Aider.
@@ -348,12 +349,15 @@ Provide ONLY "NONE" or the queries, no explanations."""
             task_description: Natural language description of code changes
             image_files: List of image file paths for context (optional)
             web_context: Formatted context from fetched websites (optional)
+            allow_no_changes: If True, return success even if no files were modified.
+                            Use for feedback/review tasks where no changes might be valid.
+                            Default False for initial implementation (must make changes).
 
         Returns:
             True if task completed successfully, False otherwise
 
         Raises:
-            Exception: If Aider execution fails
+            Exception: If Aider execution fails or makes no changes when allow_no_changes=False
         """
         logger.info(f"Starting Aider task: {task_description}")
 
@@ -447,9 +451,22 @@ Follow the commit strategy you outlined in the implementation plan.
             )
 
             if not git_status.stdout.strip():
-                logger.info("Aider ran but made no file changes (feedback may not have required changes)")
-                os.chdir(old_cwd)  # Restore working directory
-                return True  # Not an error - task completed, just no changes needed
+                if allow_no_changes:
+                    logger.info("Aider ran but made no file changes (feedback may not have required changes)")
+                    os.chdir(old_cwd)  # Restore working directory
+                    return True  # Not an error - task completed, just no changes needed
+                else:
+                    logger.error("❌ Aider made NO file changes - this is unexpected for initial implementation")
+                    logger.error(f"Task description: {task_description[:200]}...")
+                    logger.error(f"Aider's response: {str(result)[:500]}...")
+                    os.chdir(old_cwd)
+                    raise Exception(
+                        "Aider did not produce any code changes. This usually means:\n"
+                        "1. The task description was unclear or Aider misunderstood it\n"
+                        "2. Aider thought the feature already exists\n"
+                        "3. Aider hit an error and gave up\n"
+                        "Check the logs above for Aider's actual response."
+                    )
 
             logger.info(f"Aider made changes to files:\n{git_status.stdout}")
 
