@@ -198,12 +198,7 @@ Provide ONLY the title text in your response. No explanation, no quotes, no addi
         """
         logger.info(f"Generating implementation plan for: {task_description}")
 
-        search_note = ""
-        if self.search_tools:
-            search_note = """
-NOTE: You have access to internet search. If you need current information (API docs,
-syntax references, compatibility info, examples), you can search proactively during implementation.
-"""
+        # Removed search note - searches are now done sparingly and automatically only when critical
 
         plan_prompt = f"""Create an implementation plan for this task: "{task_description}"
 
@@ -230,7 +225,7 @@ CRITICAL RULES:
 - NO commands (no mkdir, npm install, etc.)
 - Just clean markdown bullets describing WHAT will be done, not HOW
 
-Keep the entire plan under 250 words.{search_note}"""
+Keep the entire plan under 250 words."""
 
         try:
             plan = self.call_claude_api(plan_prompt, max_tokens=800, category="plan_generation")
@@ -260,27 +255,29 @@ Keep the entire plan under 250 words.{search_note}"""
 
         logger.info("Determining if internet searches would be helpful...")
 
-        analysis_prompt = f"""Analyze this coding task and determine if internet searches would be helpful:
+        analysis_prompt = f"""Analyze this coding task and determine if internet searches are CRITICAL:
 
 Task: "{task_description}"
 
-Consider if you would benefit from:
-- Current API documentation
-- Library compatibility information
-- Code examples and patterns
-- Best practices for this type of implementation
-- Version information or changelogs
-- Technical specifications
+IMPORTANT: Searches consume significant tokens and time. ONLY search if ABSOLUTELY CRITICAL.
 
-If searches would be helpful, provide 1-5 specific search queries (one per line).
-If no searches are needed, respond with "NONE".
+Only search if the task requires:
+- **Breaking API changes** - New API endpoints or changed syntax you don't know
+- **Version-specific bugs** - Known issues in specific library versions
+- **External service specs** - Third-party API requirements not in codebase
 
-Examples of good queries:
-- "Next.js 14 app router data fetching"
-- "Tailwind CSS v4 container queries"
-- "OpenAI GPT-4 Turbo API pricing 2025"
+DO NOT search for:
+- ❌ Design patterns (use existing codebase patterns)
+- ❌ Best practices (follow existing code style)
+- ❌ General examples (read similar code in repo)
+- ❌ UI/UX patterns (user provided requirements/images)
+- ❌ Common tasks you know how to do
 
-Provide ONLY the search queries (or "NONE"), no explanations."""
+Default answer: "NONE"
+
+Only if truly critical and you cannot proceed without external docs, provide 1-2 specific queries (one per line).
+
+Provide ONLY "NONE" or the queries, no explanations."""
 
         try:
             response = self.call_claude_api(analysis_prompt, max_tokens=200, category="search_analysis")
@@ -293,8 +290,8 @@ Provide ONLY the search queries (or "NONE"), no explanations."""
             # Parse queries (one per line)
             queries = [q.strip() for q in response.split('\n') if q.strip() and not q.strip().startswith('-')]
 
-            # Limit to 5 queries max
-            queries = queries[:5]
+            # Limit to 2 queries max (searches are expensive)
+            queries = queries[:2]
 
             logger.info(f"Identified {len(queries)} helpful searches: {queries}")
             return queries
