@@ -435,11 +435,23 @@ Follow the commit strategy you outlined in the implementation plan.
 """
             result = self.coder.run(implementation_prompt)
 
-            # Verify Aider made changes
-            if not result:
-                logger.warning("Aider did not produce any changes")
+            # Verify Aider actually made file changes (not just responded)
+            # Check git status to see if any files were modified
+            import subprocess
+            git_status = subprocess.run(
+                ["git", "status", "--porcelain"],
+                cwd=self.repo_path,
+                capture_output=True,
+                text=True,
+                timeout=10
+            )
+
+            if not git_status.stdout.strip():
+                logger.info("Aider ran but made no file changes (feedback may not have required changes)")
                 os.chdir(old_cwd)  # Restore working directory
-                return False
+                return True  # Not an error - task completed, just no changes needed
+
+            logger.info(f"Aider made changes to files:\n{git_status.stdout}")
 
             # Validate code compiles before committing (TypeScript/Next.js check)
             logger.info("Validating changes compile successfully...")
