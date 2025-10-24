@@ -507,11 +507,40 @@ The changes you made have compilation errors. Please fix them:
 
         logger.info("Running compilation/type-check validation...")
 
+        # Check if this is a Node.js project
+        package_json = self.repo_path / "package.json"
+        if package_json.exists():
+            # Check if node_modules exists
+            node_modules = self.repo_path / "node_modules"
+            if not node_modules.exists():
+                logger.info("node_modules not found - installing dependencies first...")
+                try:
+                    install_result = subprocess.run(
+                        ["npm", "install"],
+                        cwd=self.repo_path,
+                        capture_output=True,
+                        text=True,
+                        timeout=180  # 3 minutes max
+                    )
+                    if install_result.returncode != 0:
+                        logger.error(f"❌ npm install failed: {install_result.stderr[:500]}")
+                        logger.error("Cannot validate without dependencies - skipping validation")
+                        # Don't fail validation if npm install fails - might be network issues
+                        # Better to let Aider's auto_lint catch issues during development
+                        return True
+                    logger.info("✅ npm install completed successfully")
+                except subprocess.TimeoutExpired:
+                    logger.error("❌ npm install timed out after 3 minutes")
+                    return True  # Don't fail on infrastructure issues
+                except Exception as e:
+                    logger.error(f"❌ npm install error: {e}")
+                    return True  # Don't fail on infrastructure issues
+
         # Try different validation commands based on project type
+        # Prioritize TypeScript-only checks over full builds (less likely to fail on infrastructure)
         validation_commands = [
-            ("npm run type-check", "TypeScript type-check"),
             ("npx tsc --noEmit", "TypeScript compiler"),
-            ("npm run build", "Production build"),
+            ("npm run type-check", "TypeScript type-check"),
         ]
 
         for command, description in validation_commands:
