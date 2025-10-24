@@ -1553,8 +1553,69 @@ Co-Authored-By: Claude <noreply@anthropic.com>"""
         # Now start fresh with cleared cache for "after" screenshots
         logger.info("Starting fresh dev server with new code (clearing cache to avoid compilation issues)...")
         if not self.screenshot_tools.start_dev_server(clear_cache=True):
-            logger.error("❌ Failed to start dev server - skipping after screenshots")
-            return []
+            # Check if this was a compilation hang (specific error type)
+            if hasattr(self.screenshot_tools, 'last_error_type') and self.screenshot_tools.last_error_type == "compilation_hang":
+                logger.error("❌ Dev server failed due to compilation hang")
+                logger.info("🔧 Asking Aider to fix the compilation issues...")
+
+                try:
+                    # Ask Aider to fix compilation hang issues
+                    fix_prompt = """
+The dev server is stuck during page compilation (>30s with no progress). This indicates a code bug.
+
+Common causes and how to fix them:
+
+1. **Infinite loops during render/SSR** - Code running during component render or module-level execution that never completes
+   - Check for while(true) loops without breaks
+   - Look for recursive function calls without base cases
+   - Check useEffect hooks with incorrect dependencies causing infinite re-renders
+
+2. **Circular dependencies** - Modules importing each other in a loop
+   - Review import statements in recently changed files
+   - Break circular imports by moving shared code to separate modules
+   - Use dynamic imports for circular references
+
+3. **Heavy computation during module load** - Expensive operations running at import time
+   - Move computations inside functions or useEffect
+   - Defer heavy processing until after component mounts
+   - Use lazy loading for expensive modules
+
+4. **Syntax errors causing infinite compilation loops** - Malformed code that confuses the compiler
+   - Check for unclosed brackets, parentheses, or quotes
+   - Verify template literal syntax
+   - Check for missing semicolons or commas
+
+Please analyze the recently changed files and fix any code that could cause compilation to hang.
+Focus on files modified in the last few commits - those are the most likely culprits.
+
+After fixing, ensure the code compiles successfully.
+"""
+
+                    # Use run_task with allow_no_changes=True since Aider might determine no changes needed
+                    result = self.run_task(fix_prompt, allow_no_changes=True)
+
+                    if result:
+                        logger.info("✅ Aider attempted fixes for compilation hang")
+                        logger.info("🔄 Retrying dev server start after fixes...")
+
+                        # Retry starting dev server
+                        if self.screenshot_tools.start_dev_server(clear_cache=True):
+                            logger.info("✅ Dev server started successfully after fixes")
+                        else:
+                            logger.error("❌ Dev server still failing after Aider fixes")
+                            logger.error("Skipping after screenshots - manual intervention may be needed")
+                            return []
+                    else:
+                        logger.error("❌ Aider fix attempt failed")
+                        return []
+
+                except Exception as e:
+                    logger.exception(f"Failed to fix compilation hang: {e}")
+                    return []
+            else:
+                # Some other server start failure (not compilation hang)
+                logger.error("❌ Failed to start dev server - skipping after screenshots")
+                return []
         logger.info("✅ Dev server started successfully with new code")
 
         # Capture same URLs as before

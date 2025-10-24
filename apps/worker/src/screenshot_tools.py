@@ -32,6 +32,7 @@ class ScreenshotTools:
 
         self.dev_server_process: Optional[subprocess.Popen] = None
         self.dev_server_port: Optional[int] = None
+        self.last_error_type: Optional[str] = None  # Track why dev server failed (for Aider fixes)
 
     def detect_dev_server_command(self) -> Optional[str]:
         """
@@ -379,17 +380,17 @@ class ScreenshotTools:
                         compilation_errors = []  # Clear errors on successful compilation
                         logger.info(f"📊 Compilation completed: {line.strip()}")
 
-                # If we see compilation in progress, give it time (up to 60s from last compilation message)
+                # If we see compilation in progress, give it time (up to 30s from last compilation message)
                 if compilation_in_progress:
                     time_since_compilation = time.time() - last_compilation_check
-                    if time_since_compilation < 60:
+                    if time_since_compilation < 30:
                         # Still compiling, wait a bit longer before checking HTTP
                         time.sleep(2)
                         continue
                     else:
                         # Compilation stuck - likely has errors that aren't being logged clearly
                         logger.error(f"❌ Compilation stuck for >{int(time_since_compilation)}s without completing")
-                        logger.error(f"This usually indicates compilation errors in the code")
+                        logger.error(f"This usually indicates code bugs: infinite loops, circular dependencies, or heavy computation during module load")
 
                         # Show ALL recent output to help diagnose the issue
                         logger.error(f"Full server output (last 50 lines):")
@@ -403,6 +404,8 @@ class ScreenshotTools:
                         else:
                             logger.error(f"No explicit errors detected - compilation may be hanging or very slow")
 
+                        # Mark this as a compilation hang so Aider can fix it
+                        self.last_error_type = "compilation_hang"
                         return False
 
                 # Try HTTP request with adaptive timeout
