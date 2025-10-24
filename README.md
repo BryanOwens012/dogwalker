@@ -14,7 +14,6 @@ After the Dogwalker is @-mentioned, it gets an available AI dog (Coregi) to gene
 
 **[View the complete pull request from this thread →](https://github.com/BryanOwens012/dog-park/pull/73)**
 
-
 ## How It Works
 
 1. Mention `@dogwalker add rate limiting to /api/login` in Slack
