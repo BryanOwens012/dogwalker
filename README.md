@@ -12,7 +12,7 @@ After the Dogwalker is @-mentioned, it gets an available AI dog (Coregi) to gene
   <img src="apps/frontend/public/slack-thread-example.png" alt="Real Slack thread showing Dogwalker in action" width="600">
 </p>
 
-**[View the complete Pull Request from this thread →](https://github.com/BryanOwens012/dog-park/pull/45)**
+**[View the complete pull request from this thread →](https://github.com/BryanOwens012/dog-park/pull/73)**
 
 
 ## How It Works

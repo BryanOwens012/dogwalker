@@ -132,13 +132,13 @@ const HomePage = () => {
                     />
                   </div>
                   <Link
-                    href="https://github.com/BryanOwens012/dog-park/pull/45"
+                    href="https://github.com/BryanOwens012/dog-park/pull/73"
                     target="_blank"
                     rel="noopener noreferrer"
                     className="inline-flex items-center gap-2 rounded-lg border-2 border-primary bg-background px-6 py-3 text-base font-semibold text-primary transition-all hover:-translate-y-0.5 hover:bg-primary hover:text-primary-foreground hover:shadow-lg"
                   >
                     <Github className="h-5 w-5" />
-                    View the Pull Request
+                    View the pull request
                     <ArrowRight className="h-4 w-4" />
                   </Link>
                 </div>
