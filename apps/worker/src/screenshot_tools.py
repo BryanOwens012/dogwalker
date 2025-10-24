@@ -200,12 +200,12 @@ class ScreenshotTools:
                 except Exception as e:
                     logger.warning(f"Failed to clear {cache_dir}/: {e}")
 
-    def start_dev_server(self, timeout: int = 120, preferred_port: Optional[int] = None, clear_cache: bool = False) -> bool:
+    def start_dev_server(self, timeout: int = 180, preferred_port: Optional[int] = None, clear_cache: bool = False) -> bool:
         """
         Start the development server and wait for it to be ready.
 
         Args:
-            timeout: Maximum seconds to wait for server to start
+            timeout: Maximum seconds to wait for server to start (default: 180s)
             preferred_port: Preferred port to use (if None, auto-detect)
             clear_cache: Whether to clear build cache before starting (helps with stuck compilations)
 
@@ -326,10 +326,15 @@ class ScreenshotTools:
             last_compilation_check = start_time
             compilation_errors = []
             consecutive_timeouts = 0  # Track repeated HTTP timeouts
+            last_output_time = start_time  # Track when we last saw ANY server output
 
             while time.time() - start_time < timeout:
                 # Read any new output
                 line = read_output()
+
+                # Track when we last saw output (for silent hang detection)
+                if line:
+                    last_output_time = time.time()
 
                 # Check server output for readiness indicators and errors
                 if line:
@@ -434,6 +439,21 @@ class ScreenshotTools:
                     logger.warning(f"HTTP check failed: {type(e).__name__}: {e}")
                     pass
 
+                # Check for silent hang (server says "ready" but produces no output while HTTP times out)
+                if server_ready_seen:
+                    time_since_output = time.time() - last_output_time
+                    if time_since_output > 40 and consecutive_timeouts > 0:
+                        logger.error(f"❌ Silent hang detected: server has been silent for {int(time_since_output)}s while HTTP requests timeout")
+                        logger.error(f"Server said 'Ready' but then produced no output while HTTP requests failed")
+                        logger.error(f"This usually indicates:")
+                        logger.error(f"  1. Next.js stuck compiling page with no error output")
+                        logger.error(f"  2. Code bug causing page to hang silently")
+                        logger.error(f"  3. Build cache corruption preventing compilation")
+                        logger.error(f"Recent server output:")
+                        for line in server_output_lines[-30:]:
+                            logger.error(f"  {line}")
+                        return False
+
                 # Check if process died
                 returncode = self.dev_server_process.poll()
                 if returncode is not None:
@@ -455,8 +475,15 @@ class ScreenshotTools:
                 current_time = time.time()
                 if current_time - last_check >= 10:
                     elapsed = int(current_time - start_time)
-                    status = "compiling" if compilation_in_progress else "waiting for response"
-                    logger.info(f"Still waiting for dev server ({status})... ({elapsed}s elapsed)")
+                    # Provide clearer status based on actual state
+                    if compilation_in_progress:
+                        status = "server compiling code"
+                    elif server_ready_seen:
+                        status = "server ready, but HTTP requests timing out (page may be compiling on-demand or hanging)"
+                    else:
+                        status = "waiting for server process to start"
+
+                    logger.info(f"Dev server status: {status} ({elapsed}s elapsed)")
                     last_check = current_time
 
                 time.sleep(2)
