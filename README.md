@@ -1,8 +1,8 @@
-# Dogwalker - Slack Bot that Turns Feature Requests into Production-Ready Pull Requests
+# Dogwalker - Slack Bot that Turns Feature Requests into Pull Requests
 
 Multiple AI agents ("dogs") work in parallel, write tests, and deliver code ready for human review.
 
-Built solo in 2 days using AI-assisted development.
+Built solo in ~2 days using AI-assisted development.
 
 ## See It In Action
 
@@ -12,7 +12,7 @@ After the Dogwalker is @-mentioned, it gets an available AI dog (Coregi) to gene
   <img src="apps/frontend/public/slack-thread-example.png" alt="Real Slack thread showing Dogwalker in action" width="600">
 </p>
 
-**[View the complete Pull Request from this thread →](https://github.com/BryanOwens012/dog-park/pull/45)**
+**[View the complete pull request from this thread →](https://github.com/BryanOwens012/dog-park/pull/73)**
 
 
 ## How It Works
@@ -137,6 +137,13 @@ DOGS='[
 ```
 
 See `.env.example` for full configuration options.
+
+## Limitations
+
+- The quality of the generated code is nondeterministic. Always review before merging. It might take a few tries to get it right.
+- The code generation part (Aider) is particularly buggy. Will need improvement.
+- Dogs aren't able to handle more than 200k tokens of context. Plan requests accordingly. E.g., commit large files separately.
+- When a dog crashes, it loses all its state and must restart with a clean slate.
 
 ## Contributing
 

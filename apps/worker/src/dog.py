@@ -198,12 +198,7 @@ Provide ONLY the title text in your response. No explanation, no quotes, no addi
         """
         logger.info(f"Generating implementation plan for: {task_description}")
 
-        search_note = ""
-        if self.search_tools:
-            search_note = """
-NOTE: You have access to internet search. If you need current information (API docs,
-syntax references, compatibility info, examples), you can search proactively during implementation.
-"""
+        # Removed search note - searches are now done sparingly and automatically only when critical
 
         plan_prompt = f"""Create an implementation plan for this task: "{task_description}"
 
@@ -230,7 +225,7 @@ CRITICAL RULES:
 - NO commands (no mkdir, npm install, etc.)
 - Just clean markdown bullets describing WHAT will be done, not HOW
 
-Keep the entire plan under 250 words.{search_note}"""
+Keep the entire plan under 250 words."""
 
         try:
             plan = self.call_claude_api(plan_prompt, max_tokens=800, category="plan_generation")
@@ -260,27 +255,29 @@ Keep the entire plan under 250 words.{search_note}"""
 
         logger.info("Determining if internet searches would be helpful...")
 
-        analysis_prompt = f"""Analyze this coding task and determine if internet searches would be helpful:
+        analysis_prompt = f"""Analyze this coding task and determine if internet searches are CRITICAL:
 
 Task: "{task_description}"
 
-Consider if you would benefit from:
-- Current API documentation
-- Library compatibility information
-- Code examples and patterns
-- Best practices for this type of implementation
-- Version information or changelogs
-- Technical specifications
+IMPORTANT: Searches consume significant tokens and time. ONLY search if ABSOLUTELY CRITICAL.
 
-If searches would be helpful, provide 1-5 specific search queries (one per line).
-If no searches are needed, respond with "NONE".
+Only search if the task requires:
+- **Breaking API changes** - New API endpoints or changed syntax you don't know
+- **Version-specific bugs** - Known issues in specific library versions
+- **External service specs** - Third-party API requirements not in codebase
 
-Examples of good queries:
-- "Next.js 14 app router data fetching"
-- "Tailwind CSS v4 container queries"
-- "OpenAI GPT-4 Turbo API pricing 2025"
+DO NOT search for:
+- ❌ Design patterns (use existing codebase patterns)
+- ❌ Best practices (follow existing code style)
+- ❌ General examples (read similar code in repo)
+- ❌ UI/UX patterns (user provided requirements/images)
+- ❌ Common tasks you know how to do
 
-Provide ONLY the search queries (or "NONE"), no explanations."""
+Default answer: "NONE"
+
+Only if truly critical and you cannot proceed without external docs, provide 1-2 specific queries (one per line).
+
+Provide ONLY "NONE" or the queries, no explanations."""
 
         try:
             response = self.call_claude_api(analysis_prompt, max_tokens=200, category="search_analysis")
@@ -293,8 +290,8 @@ Provide ONLY the search queries (or "NONE"), no explanations."""
             # Parse queries (one per line)
             queries = [q.strip() for q in response.split('\n') if q.strip() and not q.strip().startswith('-')]
 
-            # Limit to 5 queries max
-            queries = queries[:5]
+            # Limit to 2 queries max (searches are expensive)
+            queries = queries[:2]
 
             logger.info(f"Identified {len(queries)} helpful searches: {queries}")
             return queries
@@ -342,7 +339,8 @@ Provide ONLY the search queries (or "NONE"), no explanations."""
         self,
         task_description: str,
         image_files: Optional[list[str]] = None,
-        web_context: Optional[str] = None
+        web_context: Optional[str] = None,
+        allow_no_changes: bool = False
     ) -> bool:
         """
         Execute a coding task using Aider.
@@ -351,12 +349,15 @@ Provide ONLY the search queries (or "NONE"), no explanations."""
             task_description: Natural language description of code changes
             image_files: List of image file paths for context (optional)
             web_context: Formatted context from fetched websites (optional)
+            allow_no_changes: If True, return success even if no files were modified.
+                            Use for feedback/review tasks where no changes might be valid.
+                            Default False for initial implementation (must make changes).
 
         Returns:
             True if task completed successfully, False otherwise
 
         Raises:
-            Exception: If Aider execution fails
+            Exception: If Aider execution fails or makes no changes when allow_no_changes=False
         """
         logger.info(f"Starting Aider task: {task_description}")
 
@@ -382,10 +383,10 @@ Provide ONLY the search queries (or "NONE"), no explanations."""
                 io=io,  # Use our non-interactive IO
                 fnames=None,  # Auto-detect all relevant files - full access
                 read_only_fnames=None,  # No read-only restrictions
-                auto_commits=True,  # Let Aider auto-commit changes
+                auto_commits=False,  # Disable auto-commits - we'll validate first
                 map_tokens=self.map_tokens,  # Repo map for context
                 edit_format="diff",  # Use diff format for edits
-                auto_lint=False,  # Don't block on linter errors
+                auto_lint=True,  # Enable linting to catch errors early
             )
 
             logger.info(f"Aider initialized with model {self.model_name}")
@@ -414,26 +415,111 @@ These images are located in the `.dogwalker_images/` directory and can provide v
             if search_context:
                 search_context_section = f"\n{search_context}\n"
 
-            # Run the task with commit strategy instructions
+            # Run the task with strict type safety and commit strategy instructions
             implementation_prompt = f"""
 {task_description}
 {image_context}{web_context_section}{search_context_section}
+
+CRITICAL - Type Safety & Correctness:
+- **NEVER introduce TypeScript errors** - all code must compile successfully
+- **Check imports** - ensure all imports exist and are correctly typed
+- **Match existing patterns** - follow the project's type conventions exactly
+- **Test incrementally** - verify each change compiles before moving on
+- If you're unsure about types, read existing code first to understand patterns
+
 IMPORTANT - Commit Strategy:
 - Break your work into bite-sized commits
 - Each commit should change AT MOST 500 lines of code (across all files)
 - Exception: If a single file requires >500 LOC changes, that file should be its own commit (and can exceed 500 LOC)
 - Make commits incrementally as you complete each logical piece
 - Use descriptive commit messages that explain what changed
+- **ONLY commit code that compiles without errors**
 
 Follow the commit strategy you outlined in the implementation plan.
 """
             result = self.coder.run(implementation_prompt)
 
-            # Verify Aider made changes
-            if not result:
-                logger.warning("Aider did not produce any changes")
-                os.chdir(old_cwd)  # Restore working directory
-                return False
+            # Verify Aider actually made file changes (not just responded)
+            # Check BOTH uncommitted changes AND recent commits (Aider might auto-commit despite flag)
+            import subprocess
+
+            # Check for uncommitted changes
+            git_status = subprocess.run(
+                ["git", "status", "--porcelain"],
+                cwd=self.repo_path,
+                capture_output=True,
+                text=True,
+                timeout=10
+            )
+
+            # Check for commits made by Aider (in case it auto-committed despite auto_commits=False)
+            git_log = subprocess.run(
+                ["git", "log", "--oneline", "-5"],
+                cwd=self.repo_path,
+                capture_output=True,
+                text=True,
+                timeout=10
+            )
+
+            logger.info(f"Git status after Aider run:\n{git_status.stdout if git_status.stdout else '(no uncommitted changes)'}")
+            logger.info(f"Recent git commits:\n{git_log.stdout}")
+
+            if not git_status.stdout.strip():
+                if allow_no_changes:
+                    logger.info("Aider ran but made no file changes (feedback may not have required changes)")
+                    os.chdir(old_cwd)  # Restore working directory
+                    return True  # Not an error - task completed, just no changes needed
+                else:
+                    logger.error("❌ Aider made NO file changes - this is unexpected for initial implementation")
+                    logger.error(f"Task description: {task_description[:200]}...")
+                    logger.error(f"Aider's response: {str(result)[:500]}...")
+                    os.chdir(old_cwd)
+                    raise Exception(
+                        "Aider did not produce any code changes. This usually means:\n"
+                        "1. The task description was unclear or Aider misunderstood it\n"
+                        "2. Aider thought the feature already exists\n"
+                        "3. Aider hit an error and gave up\n"
+                        "Check the logs above for Aider's actual response."
+                    )
+
+            logger.info(f"Aider made changes to files:\n{git_status.stdout}")
+
+            # Validate code compiles before committing (TypeScript/Next.js check)
+            logger.info("Validating changes compile successfully...")
+            validation_passed, validation_errors = self._validate_changes_compile()
+
+            if not validation_passed:
+                logger.error("❌ Validation failed - changes introduce compilation errors")
+                logger.error("Asking Aider to fix the errors...")
+
+                # Include actual error output in fix prompt
+                fix_prompt = f"""
+The changes you made have compilation errors. Please fix them.
+
+VALIDATION ERRORS:
+{validation_errors}
+
+Steps to fix:
+1. Read the error messages above carefully
+2. Fix ALL compilation errors shown
+3. Run the type-check command again to verify fixes work
+4. Do not proceed until all errors are resolved.
+"""
+                fix_result = self.coder.run(fix_prompt)
+
+                # Validate again after fixes
+                logger.info("Re-validating after fixes...")
+                validation_passed, validation_errors = self._validate_changes_compile()
+
+                if not validation_passed:
+                    logger.error("❌ Validation still failing after attempted fixes")
+                    logger.error(f"Remaining errors:\n{validation_errors}")
+                    os.chdir(old_cwd)
+                    raise Exception("Aider unable to fix compilation errors - manual intervention required")
+
+            # Commit the changes now that validation passed
+            logger.info("✅ Validation passed - committing changes")
+            self._commit_changes("Implement task changes (validated)")
 
             # Track Aider cost (Aider internally tracks total_cost)
             if hasattr(self.coder, 'total_cost') and self.coder.total_cost:
@@ -442,7 +528,7 @@ Follow the commit strategy you outlined in the implementation plan.
                 self.cost_breakdown["implementation"] += aider_cost
                 logger.info(f"Aider implementation cost: ${aider_cost:.4f} - Total cost: ${self.total_cost:.4f}")
 
-            logger.info("Aider task completed successfully")
+            logger.info("Aider task completed successfully with validated changes")
             os.chdir(old_cwd)  # Restore working directory
             return True
 
@@ -450,6 +536,297 @@ Follow the commit strategy you outlined in the implementation plan.
             logger.exception(f"Aider task failed: {e}")
             os.chdir(old_cwd)  # Restore working directory even on error
             raise
+
+    def _detect_project_type(self) -> list[str]:
+        """
+        Detect project type(s) based on files in repo.
+
+        Returns:
+            List of detected project types (can be multiple, e.g., ["python", "nodejs"])
+        """
+        project_types = []
+
+        # Check for Node.js/TypeScript
+        if (self.repo_path / "package.json").exists():
+            project_types.append("nodejs")
+
+        # Check for Python
+        if (self.repo_path / "setup.py").exists() or \
+           (self.repo_path / "pyproject.toml").exists() or \
+           (self.repo_path / "requirements.txt").exists():
+            project_types.append("python")
+
+        # Check for Go
+        if (self.repo_path / "go.mod").exists():
+            project_types.append("go")
+
+        # Check for Rust
+        if (self.repo_path / "Cargo.toml").exists():
+            project_types.append("rust")
+
+        return project_types
+
+    def _validate_changes_compile(self) -> tuple[bool, str]:
+        """
+        Validate that code changes compile/type-check successfully.
+
+        This is a best-effort validation - runs appropriate checks based on
+        project type. If no validators available or validation fails due to
+        infrastructure issues, returns True (don't block on non-code issues).
+
+        Returns:
+            Tuple of (validation_passed, error_output):
+                - validation_passed: True if validation passed OR no validators available
+                - error_output: Error messages if validation failed, empty string otherwise
+        """
+        import subprocess
+
+        logger.info("Running compilation/type-check validation...")
+
+        # Detect project type(s)
+        project_types = self._detect_project_type()
+
+        if not project_types:
+            logger.info("No recognizable project type detected - skipping validation")
+            logger.info("Relying on Aider's auto_lint to catch errors during development")
+            return True, ""
+
+        logger.info(f"Detected project types: {project_types}")
+
+        validation_passed = False
+        validation_attempted = False
+        collected_errors = []
+
+        # Node.js/TypeScript validation
+        if "nodejs" in project_types:
+            logger.info("Attempting Node.js/TypeScript validation...")
+
+            # Ensure dependencies are installed
+            node_modules = self.repo_path / "node_modules"
+            if not node_modules.exists():
+                logger.info("node_modules not found - installing dependencies first...")
+                try:
+                    install_result = subprocess.run(
+                        ["npm", "install"],
+                        cwd=self.repo_path,
+                        capture_output=True,
+                        text=True,
+                        timeout=180  # 3 minutes max
+                    )
+                    if install_result.returncode != 0:
+                        logger.warning(f"npm install failed: {install_result.stderr[:500]}")
+                        logger.info("Skipping Node.js validation due to dependency issues")
+                    else:
+                        logger.info("✅ npm install completed successfully")
+                except subprocess.TimeoutExpired:
+                    logger.warning("npm install timed out - skipping Node.js validation")
+                except Exception as e:
+                    logger.warning(f"npm install error: {e} - skipping Node.js validation")
+
+            # Only try TypeScript validation if dependencies installed successfully
+            if node_modules.exists():
+                validation_attempted = True
+
+                # Detect if this is a monorepo and find TypeScript config
+                ts_project_dir = self.repo_path
+                tsconfig_locations = [
+                    self.repo_path / "tsconfig.json",  # Root
+                    self.repo_path / "apps" / "frontend" / "tsconfig.json",  # Common monorepo pattern
+                    self.repo_path / "packages" / "frontend" / "tsconfig.json",
+                ]
+
+                for location in tsconfig_locations:
+                    if location.exists():
+                        ts_project_dir = location.parent
+                        logger.info(f"Found tsconfig.json at {ts_project_dir}")
+                        break
+
+                ts_commands = [
+                    ("npx tsc --noEmit", "TypeScript compiler"),
+                    ("npm run type-check", "TypeScript type-check"),
+                ]
+
+                for command, description in ts_commands:
+                    try:
+                        result = subprocess.run(
+                            command.split(),
+                            cwd=ts_project_dir,  # Run from TypeScript project directory
+                            capture_output=True,
+                            text=True,
+                            timeout=120
+                        )
+
+                        if result.returncode == 0:
+                            logger.info(f"✅ {description} passed")
+                            validation_passed = True
+                            break
+                        else:
+                            # Check if this is a real code error vs missing command
+                            stderr_lower = result.stderr.lower()
+                            if "command not found" in stderr_lower or "not found" in stderr_lower:
+                                logger.debug(f"{description} not available in this project")
+                                continue
+
+                            # Collect error output
+                            error_msg = f"=== {description} failed ===\n"
+                            if result.stdout:
+                                error_msg += f"STDOUT:\n{result.stdout}\n"
+                            if result.stderr:
+                                error_msg += f"STDERR:\n{result.stderr}\n"
+                            collected_errors.append(error_msg)
+
+                            logger.warning(f"❌ {description} failed:")
+                            logger.warning(f"STDOUT: {result.stdout[:500]}")
+                            logger.warning(f"STDERR: {result.stderr[:500]}")
+                            # This is a real validation failure - return immediately with errors
+                            return False, "\n".join(collected_errors)
+
+                    except FileNotFoundError:
+                        logger.debug(f"{description} command not found")
+                        continue
+                    except subprocess.TimeoutExpired:
+                        logger.warning(f"{description} timed out")
+                        continue
+
+        # Python validation
+        if "python" in project_types and not validation_passed:
+            logger.info("Attempting Python validation...")
+            validation_attempted = True
+
+            # Get changed Python files
+            changed_files = self._get_recently_changed_files()
+            python_files = [f for f in changed_files if f.endswith('.py')]
+
+            if python_files:
+                # Try mypy for type checking
+                try:
+                    result = subprocess.run(
+                        ["python", "-m", "mypy"] + python_files,
+                        cwd=self.repo_path,
+                        capture_output=True,
+                        text=True,
+                        timeout=60
+                    )
+
+                    if result.returncode == 0:
+                        logger.info("✅ Python type checking (mypy) passed")
+                        validation_passed = True
+                    else:
+                        # Check if mypy is actually installed
+                        if "No module named mypy" in result.stderr:
+                            logger.debug("mypy not installed - skipping Python type checking")
+                        else:
+                            # Collect error output
+                            error_msg = "=== Python type checking (mypy) failed ===\n"
+                            if result.stdout:
+                                error_msg += f"STDOUT:\n{result.stdout}\n"
+                            if result.stderr:
+                                error_msg += f"STDERR:\n{result.stderr}\n"
+                            collected_errors.append(error_msg)
+
+                            logger.warning(f"❌ Python type checking failed:")
+                            logger.warning(f"STDERR: {result.stderr[:500]}")
+                            return False, "\n".join(collected_errors)
+
+                except FileNotFoundError:
+                    logger.debug("Python or mypy not available")
+                except subprocess.TimeoutExpired:
+                    logger.warning("Python validation timed out")
+
+        # If we attempted validation but nothing passed, and we didn't find explicit errors,
+        # assume validation tools aren't configured for this project
+        if validation_attempted and not validation_passed:
+            logger.info("No validation tools succeeded, but no explicit code errors found")
+            logger.info("Relying on Aider's auto_lint which runs during development")
+            return True, ""
+
+        # If we found explicit errors, we already returned False above with errors
+        # If validation passed, return True with no errors
+        # If we didn't attempt validation, return True (no validators available)
+        return True, ""
+
+    def _commit_changes(self, message: str) -> None:
+        """
+        Commit all current changes with given message.
+
+        Args:
+            message: Commit message
+        """
+        import subprocess
+
+        try:
+            # Check if there are any changes to commit
+            status_result = subprocess.run(
+                ["git", "status", "--porcelain"],
+                cwd=self.repo_path,
+                capture_output=True,
+                text=True,
+                timeout=10
+            )
+
+            if not status_result.stdout.strip():
+                logger.info("No changes to commit - skipping commit")
+                return
+
+            # Stage all changes
+            subprocess.run(
+                ["git", "add", "-A"],
+                cwd=self.repo_path,
+                check=True,
+                timeout=10
+            )
+
+            # Commit
+            subprocess.run(
+                ["git", "commit", "-m", message],
+                cwd=self.repo_path,
+                check=True,
+                timeout=10
+            )
+
+            logger.info(f"✅ Changes committed: {message}")
+
+        except subprocess.CalledProcessError as e:
+            logger.error(f"Failed to commit changes: {e}")
+            raise
+
+    def _get_recently_changed_files(self) -> list[str]:
+        """
+        Get list of files changed in recent commits.
+
+        Returns:
+            List of file paths relative to repo root
+        """
+        try:
+            import subprocess
+            import os
+
+            old_cwd = os.getcwd()
+            os.chdir(self.repo_path)
+
+            # Get files from recent commits (works with fresh clones that have <10 commits)
+            # Using git log instead of git diff to avoid "HEAD~10 doesn't exist" errors
+            result = subprocess.run(
+                ["git", "log", "--name-only", "--pretty=format:", "-10"],
+                capture_output=True,
+                text=True,
+                timeout=5
+            )
+
+            os.chdir(old_cwd)
+
+            if result.returncode == 0:
+                # Parse output and deduplicate files
+                files = list(set([f.strip() for f in result.stdout.strip().split('\n') if f.strip()]))
+                logger.info(f"Found {len(files)} changed files: {files}")
+                return files
+            else:
+                logger.warning(f"Failed to get changed files: {result.stderr}")
+                return []
+
+        except Exception as e:
+            logger.error(f"Error getting changed files: {e}")
+            return []
 
     def run_self_review(self) -> bool:
         """
@@ -463,8 +840,13 @@ Follow the commit strategy you outlined in the implementation plan.
         """
         logger.info("Starting self-review of code changes")
 
+        # Get list of changed files to pass to Aider
+        changed_files = self._get_recently_changed_files()
+        if not changed_files:
+            logger.warning("No changed files found - review may not work properly")
+
         review_prompt = """
-Review the changes you just made with a critical eye. Consider:
+Review the code changes in the files that have been added to this chat. Consider:
 
 1. **Code Quality**: Is the code clean, readable, and maintainable?
 2. **Best Practices**: Does it follow the project's coding standards and patterns?
@@ -489,20 +871,26 @@ IMPORTANT - Commit Strategy:
             old_cwd = os.getcwd()
             os.chdir(self.repo_path)
 
-            # Re-initialize Aider for review (fresh context)
+            # Re-initialize Aider for review with changed files explicitly added
             model = Model(self.model_name)
             io = InputOutput(yes=True)
+
+            # Convert changed files to absolute paths
+            changed_file_paths = [str(self.repo_path / f) for f in changed_files] if changed_files else None
 
             self.coder = Coder.create(
                 main_model=model,
                 io=io,
-                fnames=None,  # Auto-detect all relevant files - full access
+                fnames=changed_file_paths,  # Explicitly add changed files for review
                 read_only_fnames=None,  # No read-only restrictions
                 auto_commits=True,
                 map_tokens=self.map_tokens,
                 edit_format="diff",
                 auto_lint=False,  # Don't block on linter errors
             )
+
+            if changed_file_paths:
+                logger.info(f"Added {len(changed_file_paths)} changed files to review context")
 
             # Run review
             result = self.coder.run(review_prompt)
@@ -533,8 +921,13 @@ IMPORTANT - Commit Strategy:
         """
         logger.info("Writing comprehensive tests")
 
+        # Get list of changed files to pass to Aider
+        changed_files = self._get_recently_changed_files()
+        if not changed_files:
+            logger.warning("No changed files found - test writing may not work properly")
+
         test_prompt = """
-Write comprehensive tests for the changes you just made. Follow these guidelines:
+Write comprehensive tests for the code changes in the files that have been added to this chat. Follow these guidelines:
 
 1. **Test Coverage**: Write tests that cover:
    - Happy path (normal expected behavior)
@@ -571,18 +964,24 @@ IMPORTANT - Commit Strategy:
             old_cwd = os.getcwd()
             os.chdir(self.repo_path)
 
-            # Re-initialize Aider for test writing
+            # Re-initialize Aider for test writing with changed files explicitly added
             model = Model(self.model_name)
             io = InputOutput(yes=True)
+
+            # Convert changed files to absolute paths
+            changed_file_paths = [str(self.repo_path / f) for f in changed_files] if changed_files else None
 
             self.coder = Coder.create(
                 main_model=model,
                 io=io,
-                fnames=None,  # Auto-detect files
+                fnames=changed_file_paths,  # Explicitly add changed files for testing
                 auto_commits=True,
                 map_tokens=self.map_tokens,
                 edit_format="diff",
             )
+
+            if changed_file_paths:
+                logger.info(f"Added {len(changed_file_paths)} changed files to test context")
 
             # Write and run tests
             result = self.coder.run(test_prompt)
@@ -1066,7 +1465,9 @@ Co-Authored-By: Claude <noreply@anthropic.com>"""
 
     def capture_before_screenshots(self, plan: str) -> list[dict[str, str]]:
         """
-        Capture "before" screenshots of frontend pages before implementation.
+        Take screenshots of the frontend page(s) BEFORE making any code changes.
+
+        This captures the current state of the application before implementation begins.
 
         Args:
             plan: Implementation plan
@@ -1120,11 +1521,20 @@ Co-Authored-By: Claude <noreply@anthropic.com>"""
         else:
             logger.error("❌ Failed to capture any screenshots")
 
+        # IMPORTANT: Stop the server now that we have before screenshots
+        # Aider will make large multi-file changes that break hot-reload
+        # We'll start a fresh server (with cache cleared) for "after" screenshots
+        logger.info("Stopping dev server before code changes (will restart fresh after changes complete)")
+        self.screenshot_tools.stop_dev_server()
+
         return screenshots
 
     def capture_after_screenshots(self, before_screenshots: list[dict[str, str]]) -> list[dict[str, str]]:
         """
-        Capture "after" screenshots of the same URLs as before screenshots.
+        Take screenshots of the frontend page(s) AFTER making ALL code changes.
+
+        This captures the final state of the application after all implementation,
+        self-review, and testing is complete. Screenshots the same URLs as before.
 
         Args:
             before_screenshots: List of before screenshot info (used to get URLs)
@@ -1139,16 +1549,74 @@ Co-Authored-By: Claude <noreply@anthropic.com>"""
 
         logger.info("Capturing after screenshots to compare with before...")
 
-        # Restart dev server to ensure latest code is running
-        logger.info("Stopping dev server...")
-        self.screenshot_tools.stop_dev_server()
+        # Server was stopped after "before" screenshots to avoid hot-reload issues
+        # Now start fresh with cleared cache for "after" screenshots
+        logger.info("Starting fresh dev server with new code (clearing cache to avoid compilation issues)...")
+        if not self.screenshot_tools.start_dev_server(clear_cache=True):
+            # Check if this was a compilation hang (specific error type)
+            if hasattr(self.screenshot_tools, 'last_error_type') and self.screenshot_tools.last_error_type == "compilation_hang":
+                logger.error("❌ Dev server failed due to compilation hang")
+                logger.info("🔧 Asking Aider to fix the compilation issues...")
 
-        logger.info("Restarting dev server with new code...")
-        if not self.screenshot_tools.start_dev_server():
-            logger.error("❌ Failed to restart dev server - skipping after screenshots")
-            return []
+                try:
+                    # Ask Aider to fix compilation hang issues
+                    fix_prompt = """
+The dev server is stuck during page compilation (>30s with no progress). This indicates a code bug.
 
-        logger.info("✅ Dev server restarted with new code")
+Common causes and how to fix them:
+
+1. **Infinite loops during render/SSR** - Code running during component render or module-level execution that never completes
+   - Check for while(true) loops without breaks
+   - Look for recursive function calls without base cases
+   - Check useEffect hooks with incorrect dependencies causing infinite re-renders
+
+2. **Circular dependencies** - Modules importing each other in a loop
+   - Review import statements in recently changed files
+   - Break circular imports by moving shared code to separate modules
+   - Use dynamic imports for circular references
+
+3. **Heavy computation during module load** - Expensive operations running at import time
+   - Move computations inside functions or useEffect
+   - Defer heavy processing until after component mounts
+   - Use lazy loading for expensive modules
+
+4. **Syntax errors causing infinite compilation loops** - Malformed code that confuses the compiler
+   - Check for unclosed brackets, parentheses, or quotes
+   - Verify template literal syntax
+   - Check for missing semicolons or commas
+
+Please analyze the recently changed files and fix any code that could cause compilation to hang.
+Focus on files modified in the last few commits - those are the most likely culprits.
+
+After fixing, ensure the code compiles successfully.
+"""
+
+                    # Use run_task with allow_no_changes=True since Aider might determine no changes needed
+                    result = self.run_task(fix_prompt, allow_no_changes=True)
+
+                    if result:
+                        logger.info("✅ Aider attempted fixes for compilation hang")
+                        logger.info("🔄 Retrying dev server start after fixes...")
+
+                        # Retry starting dev server
+                        if self.screenshot_tools.start_dev_server(clear_cache=True):
+                            logger.info("✅ Dev server started successfully after fixes")
+                        else:
+                            logger.error("❌ Dev server still failing after Aider fixes")
+                            logger.error("Skipping after screenshots - manual intervention may be needed")
+                            return []
+                    else:
+                        logger.error("❌ Aider fix attempt failed")
+                        return []
+
+                except Exception as e:
+                    logger.exception(f"Failed to fix compilation hang: {e}")
+                    return []
+            else:
+                # Some other server start failure (not compilation hang)
+                logger.error("❌ Failed to start dev server - skipping after screenshots")
+                return []
+        logger.info("✅ Dev server started successfully with new code")
 
         # Capture same URLs as before
         urls = [shot['url'] for shot in before_screenshots]

@@ -380,13 +380,16 @@ def run_coding_task(
         # Checkpoint: Before implementation phase
         check_cancellation("planning")
 
-        # Step 6.5: Capture "before" screenshots if this is a frontend task
-        logger.info("Checking if before screenshots are needed...")
+        # Step 6.5: Take screenshots of frontend page(s) BEFORE making any code changes
+        logger.info("📸 Checking if screenshots are needed (BEFORE implementation)...")
         before_screenshots = dog.capture_before_screenshots(plan)
 
         if before_screenshots:
-            logger.info(f"Captured and uploaded {len(before_screenshots)} before screenshots to GitHub")
-            # Screenshots are uploaded to GitHub (dogwalker-screenshots branch), not committed to PR branch
+            logger.info(f"✅ Captured and uploaded {len(before_screenshots)} BEFORE screenshots to GitHub")
+            for shot in before_screenshots:
+                logger.info(f"   - {shot['url']}: {shot.get('github_url', 'NO GITHUB URL')}")
+        else:
+            logger.info("ℹ️  No before screenshots captured (not a frontend task or dev server failed)")
 
         # Check for human feedback before starting implementation
         feedback = communication.check_for_feedback()
@@ -425,7 +428,7 @@ def run_coding_task(
             feedback_prompt = f"""{communication.format_feedback_for_prompt(post_impl_feedback)}
 
 Please make these changes now."""
-            dog.run_task(feedback_prompt, web_context=web_context)
+            dog.run_task(feedback_prompt, web_context=web_context, allow_no_changes=True)
 
         # Step 8: Run self-review
         logger.info("Running self-review on code changes")
@@ -445,7 +448,7 @@ Please make these changes now."""
             feedback_prompt = f"""{communication.format_feedback_for_prompt(post_review_feedback)}
 
 Please make these changes now."""
-            dog.run_task(feedback_prompt, web_context=web_context)
+            dog.run_task(feedback_prompt, web_context=web_context, allow_no_changes=True)
 
         # Step 9: Write and run comprehensive tests
         logger.info("Writing and running comprehensive tests")
@@ -467,7 +470,7 @@ Please make these changes now."""
             feedback_prompt = f"""{communication.format_feedback_for_prompt(final_feedback)}
 
 Please make these changes now."""
-            dog.run_task(feedback_prompt, web_context=web_context)
+            dog.run_task(feedback_prompt, web_context=web_context, allow_no_changes=True)
 
             # Re-run tests to ensure changes didn't break anything
             logger.info("Re-running tests after incorporating final feedback")
@@ -475,15 +478,20 @@ Please make these changes now."""
             if not test_success:
                 raise ValueError(f"Tests failed after final feedback: {test_message}")
 
-        # Step 9.5: Capture "after" screenshots if we took "before" screenshots
+        # Step 9.5: Take screenshots of frontend page(s) AFTER making ALL code changes
         after_screenshots = []
         if before_screenshots:
-            logger.info("Capturing after screenshots...")
+            logger.info("📸 Capturing AFTER screenshots (after implementation, review, and tests)...")
             after_screenshots = dog.capture_after_screenshots(before_screenshots)
 
             if after_screenshots:
-                logger.info(f"Captured and uploaded {len(after_screenshots)} after screenshots to GitHub")
-                # Screenshots are uploaded to GitHub (dogwalker-screenshots branch), not committed to PR branch
+                logger.info(f"✅ Captured and uploaded {len(after_screenshots)} AFTER screenshots to GitHub")
+                for shot in after_screenshots:
+                    logger.info(f"   - {shot['url']}: {shot.get('github_url', 'NO GITHUB URL')}")
+            else:
+                logger.error("❌ Failed to capture after screenshots (dev server failed or URLs not accessible)")
+        else:
+            logger.info("ℹ️  Skipping after screenshots (no before screenshots were captured)")
 
         # Step 10: Remove placeholder file and push final changes
         logger.info("Removing placeholder .gitkeep file")
@@ -539,6 +547,15 @@ Max 3-5 bullet points."""
         # Collect thread feedback for PR description
         logger.info("Collecting thread feedback for PR description")
         thread_feedback = communication.format_messages_for_pr()
+
+        # Log screenshot status for PR description
+        logger.info(f"📸 Screenshot status for PR description:")
+        logger.info(f"   - Before screenshots: {len(before_screenshots) if before_screenshots else 0}")
+        logger.info(f"   - After screenshots: {len(after_screenshots) if after_screenshots else 0}")
+        if before_screenshots:
+            logger.info(f"   - Before screenshots have GitHub URLs: {all(s.get('github_url') for s in before_screenshots)}")
+        if after_screenshots:
+            logger.info(f"   - After screenshots have GitHub URLs: {all(s.get('github_url') for s in after_screenshots)}")
 
         # Generate complete final PR description
         final_pr_body = dog.generate_final_pr_description(
