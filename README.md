@@ -2,7 +2,7 @@
 
 Multiple AI agents ("dogs") work in parallel, write tests, and deliver code ready for human review.
 
-Built solo in 2 days using AI-assisted development.
+Built solo in ~2 days using AI-assisted development.
 
 ## See It In Action
 
