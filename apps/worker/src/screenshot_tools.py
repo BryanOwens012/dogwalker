@@ -297,16 +297,58 @@ class ScreenshotTools:
             # Wait for server to be ready
             start_time = time.time()
             last_check = start_time
+            server_ready_seen = False
+            compilation_in_progress = False
+            last_compilation_check = start_time
+
             while time.time() - start_time < timeout:
                 # Read any new output
-                read_output()
+                line = read_output()
+
+                # Check server output for readiness indicators
+                if line:
+                    line_lower = line.lower()
+                    # Check for server ready messages
+                    if any(msg in line_lower for msg in ['ready in', 'compiled successfully', 'compiled client', 'compiled server']):
+                        server_ready_seen = True
+                        compilation_in_progress = False
+                        logger.info(f"📊 Dev server reports ready: {line.strip()}")
+                    # Check for compilation start
+                    elif 'compiling' in line_lower and not 'compiled' in line_lower:
+                        compilation_in_progress = True
+                        last_compilation_check = time.time()
+                        logger.info(f"📊 Compilation in progress: {line.strip()}")
+                    # Check for compilation completion
+                    elif 'compiled' in line_lower:
+                        compilation_in_progress = False
+                        logger.info(f"📊 Compilation completed: {line.strip()}")
+
+                # If we see compilation in progress, give it time (up to 60s from last compilation message)
+                if compilation_in_progress:
+                    time_since_compilation = time.time() - last_compilation_check
+                    if time_since_compilation < 60:
+                        # Still compiling, wait a bit longer before checking HTTP
+                        time.sleep(2)
+                        continue
+                    else:
+                        # Compilation taking too long, try HTTP anyway
+                        logger.warning(f"⚠️ Compilation taking longer than expected (>{int(time_since_compilation)}s)")
+                        compilation_in_progress = False
+
+                # Try HTTP request (shorter timeout, more attempts)
                 try:
                     import requests
-                    response = requests.get(f"http://localhost:{self.dev_server_port}", timeout=2)
+                    # Use 10s timeout - enough for most responses, but not too long
+                    response = requests.get(f"http://localhost:{self.dev_server_port}", timeout=10)
                     if response.status_code < 500:  # Server is responding
-                        logger.info(f"Dev server ready on port {self.dev_server_port}")
+                        logger.info(f"✅ Dev server ready on port {self.dev_server_port}")
                         return True
-                except Exception:
+                except requests.exceptions.Timeout:
+                    # Timeout - server might be compiling
+                    if not compilation_in_progress:
+                        logger.debug(f"HTTP request timed out (server may be compiling)")
+                except Exception as e:
+                    logger.debug(f"HTTP check failed: {type(e).__name__}")
                     pass
 
                 # Check if process died
@@ -330,7 +372,8 @@ class ScreenshotTools:
                 current_time = time.time()
                 if current_time - last_check >= 10:
                     elapsed = int(current_time - start_time)
-                    logger.info(f"Still waiting for dev server... ({elapsed}s elapsed)")
+                    status = "compiling" if compilation_in_progress else "waiting for response"
+                    logger.info(f"Still waiting for dev server ({status})... ({elapsed}s elapsed)")
                     last_check = current_time
 
                 time.sleep(2)
@@ -348,16 +391,21 @@ class ScreenshotTools:
             if detected_port and detected_port != self.dev_server_port:
                 logger.error(f"⚠️ Server may have started on port {detected_port} instead of {self.dev_server_port}")
                 logger.error(f"This dev server may not respect the PORT environment variable")
-                # Try the detected port
-                try:
-                    import requests
-                    response = requests.get(f"http://localhost:{detected_port}", timeout=2)
-                    if response.status_code < 500:
-                        logger.info(f"✅ Server IS running on port {detected_port}! Using this port instead.")
-                        self.dev_server_port = detected_port
-                        return True
-                except Exception:
-                    pass
+                # Try the detected port (give it a few attempts in case it's still compiling)
+                for attempt in range(3):
+                    try:
+                        import requests
+                        response = requests.get(f"http://localhost:{detected_port}", timeout=15)
+                        if response.status_code < 500:
+                            logger.info(f"✅ Server IS running on port {detected_port}! Using this port instead.")
+                            self.dev_server_port = detected_port
+                            return True
+                    except requests.exceptions.Timeout:
+                        if attempt < 2:
+                            logger.info(f"Port {detected_port} timed out, retrying (attempt {attempt + 2}/3)...")
+                            time.sleep(5)
+                    except Exception:
+                        break
 
             logger.error(f"Server output (last 30 lines):")
             for line in server_output_lines[-30:]:
