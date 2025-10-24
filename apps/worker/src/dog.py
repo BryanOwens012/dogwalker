@@ -446,31 +446,34 @@ Follow the commit strategy you outlined in the implementation plan.
 
             # Validate code compiles before committing (TypeScript/Next.js check)
             logger.info("Validating changes compile successfully...")
-            validation_passed = self._validate_changes_compile()
+            validation_passed, validation_errors = self._validate_changes_compile()
 
             if not validation_passed:
                 logger.error("❌ Validation failed - changes introduce compilation errors")
                 logger.error("Asking Aider to fix the errors...")
 
-                # Ask Aider to fix the compilation errors
-                fix_prompt = """
-The changes you made have compilation errors. Please fix them:
+                # Include actual error output in fix prompt
+                fix_prompt = f"""
+The changes you made have compilation errors. Please fix them.
 
-1. Run the appropriate type-check command (tsc, next build --dry-run, or npm run type-check)
-2. Read the error messages carefully
-3. Fix ALL compilation errors
-4. Verify the fixes work
+VALIDATION ERRORS:
+{validation_errors}
 
-**Do not proceed until all errors are resolved.**
+Steps to fix:
+1. Read the error messages above carefully
+2. Fix ALL compilation errors shown
+3. Run the type-check command again to verify fixes work
+4. Do not proceed until all errors are resolved.
 """
                 fix_result = self.coder.run(fix_prompt)
 
                 # Validate again after fixes
                 logger.info("Re-validating after fixes...")
-                validation_passed = self._validate_changes_compile()
+                validation_passed, validation_errors = self._validate_changes_compile()
 
                 if not validation_passed:
                     logger.error("❌ Validation still failing after attempted fixes")
+                    logger.error(f"Remaining errors:\n{validation_errors}")
                     os.chdir(old_cwd)
                     raise Exception("Aider unable to fix compilation errors - manual intervention required")
 
@@ -523,7 +526,7 @@ The changes you made have compilation errors. Please fix them:
 
         return project_types
 
-    def _validate_changes_compile(self) -> bool:
+    def _validate_changes_compile(self) -> tuple[bool, str]:
         """
         Validate that code changes compile/type-check successfully.
 
@@ -532,7 +535,9 @@ The changes you made have compilation errors. Please fix them:
         infrastructure issues, returns True (don't block on non-code issues).
 
         Returns:
-            True if validation passed OR no validators available, False if code errors found
+            Tuple of (validation_passed, error_output):
+                - validation_passed: True if validation passed OR no validators available
+                - error_output: Error messages if validation failed, empty string otherwise
         """
         import subprocess
 
@@ -544,12 +549,13 @@ The changes you made have compilation errors. Please fix them:
         if not project_types:
             logger.info("No recognizable project type detected - skipping validation")
             logger.info("Relying on Aider's auto_lint to catch errors during development")
-            return True
+            return True, ""
 
         logger.info(f"Detected project types: {project_types}")
 
         validation_passed = False
         validation_attempted = False
+        collected_errors = []
 
         # Node.js/TypeScript validation
         if "nodejs" in project_types:
@@ -606,11 +612,19 @@ The changes you made have compilation errors. Please fix them:
                                 logger.debug(f"{description} not available in this project")
                                 continue
 
+                            # Collect error output
+                            error_msg = f"=== {description} failed ===\n"
+                            if result.stdout:
+                                error_msg += f"STDOUT:\n{result.stdout}\n"
+                            if result.stderr:
+                                error_msg += f"STDERR:\n{result.stderr}\n"
+                            collected_errors.append(error_msg)
+
                             logger.warning(f"❌ {description} failed:")
                             logger.warning(f"STDOUT: {result.stdout[:500]}")
                             logger.warning(f"STDERR: {result.stderr[:500]}")
-                            # This is a real validation failure - don't try other commands
-                            return False
+                            # This is a real validation failure - return immediately with errors
+                            return False, "\n".join(collected_errors)
 
                     except FileNotFoundError:
                         logger.debug(f"{description} command not found")
@@ -647,9 +661,17 @@ The changes you made have compilation errors. Please fix them:
                         if "No module named mypy" in result.stderr:
                             logger.debug("mypy not installed - skipping Python type checking")
                         else:
+                            # Collect error output
+                            error_msg = "=== Python type checking (mypy) failed ===\n"
+                            if result.stdout:
+                                error_msg += f"STDOUT:\n{result.stdout}\n"
+                            if result.stderr:
+                                error_msg += f"STDERR:\n{result.stderr}\n"
+                            collected_errors.append(error_msg)
+
                             logger.warning(f"❌ Python type checking failed:")
                             logger.warning(f"STDERR: {result.stderr[:500]}")
-                            return False
+                            return False, "\n".join(collected_errors)
 
                 except FileNotFoundError:
                     logger.debug("Python or mypy not available")
@@ -661,12 +683,12 @@ The changes you made have compilation errors. Please fix them:
         if validation_attempted and not validation_passed:
             logger.info("No validation tools succeeded, but no explicit code errors found")
             logger.info("Relying on Aider's auto_lint which runs during development")
-            return True
+            return True, ""
 
-        # If we found explicit errors, we already returned False above
-        # If validation passed, return True
+        # If we found explicit errors, we already returned False above with errors
+        # If validation passed, return True with no errors
         # If we didn't attempt validation, return True (no validators available)
-        return True
+        return True, ""
 
     def _commit_changes(self, message: str) -> None:
         """
