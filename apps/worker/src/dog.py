@@ -382,10 +382,10 @@ Provide ONLY the search queries (or "NONE"), no explanations."""
                 io=io,  # Use our non-interactive IO
                 fnames=None,  # Auto-detect all relevant files - full access
                 read_only_fnames=None,  # No read-only restrictions
-                auto_commits=True,  # Let Aider auto-commit changes
+                auto_commits=False,  # Disable auto-commits - we'll validate first
                 map_tokens=self.map_tokens,  # Repo map for context
                 edit_format="diff",  # Use diff format for edits
-                auto_lint=False,  # Don't block on linter errors
+                auto_lint=True,  # Enable linting to catch errors early
             )
 
             logger.info(f"Aider initialized with model {self.model_name}")
@@ -414,16 +414,25 @@ These images are located in the `.dogwalker_images/` directory and can provide v
             if search_context:
                 search_context_section = f"\n{search_context}\n"
 
-            # Run the task with commit strategy instructions
+            # Run the task with strict type safety and commit strategy instructions
             implementation_prompt = f"""
 {task_description}
 {image_context}{web_context_section}{search_context_section}
+
+CRITICAL - Type Safety & Correctness:
+- **NEVER introduce TypeScript errors** - all code must compile successfully
+- **Check imports** - ensure all imports exist and are correctly typed
+- **Match existing patterns** - follow the project's type conventions exactly
+- **Test incrementally** - verify each change compiles before moving on
+- If you're unsure about types, read existing code first to understand patterns
+
 IMPORTANT - Commit Strategy:
 - Break your work into bite-sized commits
 - Each commit should change AT MOST 500 lines of code (across all files)
 - Exception: If a single file requires >500 LOC changes, that file should be its own commit (and can exceed 500 LOC)
 - Make commits incrementally as you complete each logical piece
 - Use descriptive commit messages that explain what changed
+- **ONLY commit code that compiles without errors**
 
 Follow the commit strategy you outlined in the implementation plan.
 """
@@ -435,6 +444,40 @@ Follow the commit strategy you outlined in the implementation plan.
                 os.chdir(old_cwd)  # Restore working directory
                 return False
 
+            # Validate code compiles before committing (TypeScript/Next.js check)
+            logger.info("Validating changes compile successfully...")
+            validation_passed = self._validate_changes_compile()
+
+            if not validation_passed:
+                logger.error("❌ Validation failed - changes introduce compilation errors")
+                logger.error("Asking Aider to fix the errors...")
+
+                # Ask Aider to fix the compilation errors
+                fix_prompt = """
+The changes you made have compilation errors. Please fix them:
+
+1. Run the appropriate type-check command (tsc, next build --dry-run, or npm run type-check)
+2. Read the error messages carefully
+3. Fix ALL compilation errors
+4. Verify the fixes work
+
+**Do not proceed until all errors are resolved.**
+"""
+                fix_result = self.coder.run(fix_prompt)
+
+                # Validate again after fixes
+                logger.info("Re-validating after fixes...")
+                validation_passed = self._validate_changes_compile()
+
+                if not validation_passed:
+                    logger.error("❌ Validation still failing after attempted fixes")
+                    os.chdir(old_cwd)
+                    raise Exception("Aider unable to fix compilation errors - manual intervention required")
+
+            # Commit the changes now that validation passed
+            logger.info("✅ Validation passed - committing changes")
+            self._commit_changes("Implement task changes (validated)")
+
             # Track Aider cost (Aider internally tracks total_cost)
             if hasattr(self.coder, 'total_cost') and self.coder.total_cost:
                 aider_cost = self.coder.total_cost
@@ -442,7 +485,7 @@ Follow the commit strategy you outlined in the implementation plan.
                 self.cost_breakdown["implementation"] += aider_cost
                 logger.info(f"Aider implementation cost: ${aider_cost:.4f} - Total cost: ${self.total_cost:.4f}")
 
-            logger.info("Aider task completed successfully")
+            logger.info("Aider task completed successfully with validated changes")
             os.chdir(old_cwd)  # Restore working directory
             return True
 
@@ -450,6 +493,129 @@ Follow the commit strategy you outlined in the implementation plan.
             logger.exception(f"Aider task failed: {e}")
             os.chdir(old_cwd)  # Restore working directory even on error
             raise
+
+    def _validate_changes_compile(self) -> bool:
+        """
+        Validate that code changes compile successfully.
+
+        Runs type-checking/compilation to ensure no errors were introduced.
+
+        Returns:
+            True if validation passed, False if compilation errors exist
+        """
+        import subprocess
+
+        logger.info("Running compilation/type-check validation...")
+
+        # Try different validation commands based on project type
+        validation_commands = [
+            ("npm run type-check", "TypeScript type-check"),
+            ("npx tsc --noEmit", "TypeScript compiler"),
+            ("npm run build", "Production build"),
+        ]
+
+        for command, description in validation_commands:
+            try:
+                logger.info(f"Trying {description}: {command}")
+                result = subprocess.run(
+                    command.split(),
+                    cwd=self.repo_path,
+                    capture_output=True,
+                    text=True,
+                    timeout=120  # 2 minute timeout
+                )
+
+                if result.returncode == 0:
+                    logger.info(f"✅ {description} passed")
+                    return True
+                else:
+                    logger.warning(f"❌ {description} failed:")
+                    logger.warning(f"STDOUT: {result.stdout[:500]}")
+                    logger.warning(f"STDERR: {result.stderr[:500]}")
+                    # Try next command
+                    continue
+
+            except FileNotFoundError:
+                logger.debug(f"Command not found: {command}")
+                continue
+            except subprocess.TimeoutExpired:
+                logger.warning(f"❌ {description} timed out after 120s")
+                continue
+            except Exception as e:
+                logger.warning(f"Error running {command}: {e}")
+                continue
+
+        # If all validation attempts failed
+        logger.error("❌ All validation commands failed or timed out")
+        return False
+
+    def _commit_changes(self, message: str) -> None:
+        """
+        Commit all current changes with given message.
+
+        Args:
+            message: Commit message
+        """
+        import subprocess
+
+        try:
+            # Stage all changes
+            subprocess.run(
+                ["git", "add", "-A"],
+                cwd=self.repo_path,
+                check=True,
+                timeout=10
+            )
+
+            # Commit
+            subprocess.run(
+                ["git", "commit", "-m", message],
+                cwd=self.repo_path,
+                check=True,
+                timeout=10
+            )
+
+            logger.info(f"✅ Changes committed: {message}")
+
+        except subprocess.CalledProcessError as e:
+            logger.error(f"Failed to commit changes: {e}")
+            raise
+
+    def _get_recently_changed_files(self) -> list[str]:
+        """
+        Get list of files changed in recent commits.
+
+        Returns:
+            List of file paths relative to repo root
+        """
+        try:
+            import subprocess
+            import os
+
+            old_cwd = os.getcwd()
+            os.chdir(self.repo_path)
+
+            # Get files changed in last 10 commits (should cover all changes made during task)
+            result = subprocess.run(
+                ["git", "diff", "--name-only", "HEAD~10..HEAD"],
+                capture_output=True,
+                text=True,
+                timeout=5
+            )
+
+            os.chdir(old_cwd)
+
+            if result.returncode == 0:
+                files = [f.strip() for f in result.stdout.strip().split('\n') if f.strip()]
+                logger.info(f"Found {len(files)} changed files: {files}")
+                return files
+            else:
+                logger.warning(f"Failed to get changed files: {result.stderr}")
+                return []
+
+        except Exception as e:
+            logger.error(f"Error getting changed files: {e}")
+            return []
 
     def run_self_review(self) -> bool:
         """
@@ -463,11 +629,13 @@ Follow the commit strategy you outlined in the implementation plan.
         """
         logger.info("Starting self-review of code changes")
 
-        review_prompt = """
-IMPORTANT: First, check what code changes were recently committed by running `git log -5 --oneline` and `git diff HEAD~5..HEAD`.
-Add the changed files to the chat so you can review them.
+        # Get list of changed files to pass to Aider
+        changed_files = self._get_recently_changed_files()
+        if not changed_files:
+            logger.warning("No changed files found - review may not work properly")
 
-Review the recent code changes with a critical eye. Consider:
+        review_prompt = """
+Review the code changes in the files that have been added to this chat. Consider:
 
 1. **Code Quality**: Is the code clean, readable, and maintainable?
 2. **Best Practices**: Does it follow the project's coding standards and patterns?
@@ -492,20 +660,26 @@ IMPORTANT - Commit Strategy:
             old_cwd = os.getcwd()
             os.chdir(self.repo_path)
 
-            # Re-initialize Aider for review (fresh context)
+            # Re-initialize Aider for review with changed files explicitly added
             model = Model(self.model_name)
             io = InputOutput(yes=True)
+
+            # Convert changed files to absolute paths
+            changed_file_paths = [str(self.repo_path / f) for f in changed_files] if changed_files else None
 
             self.coder = Coder.create(
                 main_model=model,
                 io=io,
-                fnames=None,  # Auto-detect all relevant files - full access
+                fnames=changed_file_paths,  # Explicitly add changed files for review
                 read_only_fnames=None,  # No read-only restrictions
                 auto_commits=True,
                 map_tokens=self.map_tokens,
                 edit_format="diff",
                 auto_lint=False,  # Don't block on linter errors
             )
+
+            if changed_file_paths:
+                logger.info(f"Added {len(changed_file_paths)} changed files to review context")
 
             # Run review
             result = self.coder.run(review_prompt)
@@ -536,11 +710,13 @@ IMPORTANT - Commit Strategy:
         """
         logger.info("Writing comprehensive tests")
 
-        test_prompt = """
-IMPORTANT: First, check what code changes were recently committed by running `git log -5 --oneline` and `git diff HEAD~5..HEAD`.
-Add the changed files to the chat so you can write appropriate tests for them.
+        # Get list of changed files to pass to Aider
+        changed_files = self._get_recently_changed_files()
+        if not changed_files:
+            logger.warning("No changed files found - test writing may not work properly")
 
-Write comprehensive tests for the recent code changes. Follow these guidelines:
+        test_prompt = """
+Write comprehensive tests for the code changes in the files that have been added to this chat. Follow these guidelines:
 
 1. **Test Coverage**: Write tests that cover:
    - Happy path (normal expected behavior)
@@ -577,18 +753,24 @@ IMPORTANT - Commit Strategy:
             old_cwd = os.getcwd()
             os.chdir(self.repo_path)
 
-            # Re-initialize Aider for test writing
+            # Re-initialize Aider for test writing with changed files explicitly added
             model = Model(self.model_name)
             io = InputOutput(yes=True)
+
+            # Convert changed files to absolute paths
+            changed_file_paths = [str(self.repo_path / f) for f in changed_files] if changed_files else None
 
             self.coder = Coder.create(
                 main_model=model,
                 io=io,
-                fnames=None,  # Auto-detect files
+                fnames=changed_file_paths,  # Explicitly add changed files for testing
                 auto_commits=True,
                 map_tokens=self.map_tokens,
                 edit_format="diff",
             )
+
+            if changed_file_paths:
+                logger.info(f"Added {len(changed_file_paths)} changed files to test context")
 
             # Write and run tests
             result = self.coder.run(test_prompt)
@@ -1128,6 +1310,12 @@ Co-Authored-By: Claude <noreply@anthropic.com>"""
         else:
             logger.error("❌ Failed to capture any screenshots")
 
+        # IMPORTANT: Stop the server now that we have before screenshots
+        # Aider will make large multi-file changes that break hot-reload
+        # We'll start a fresh server (with cache cleared) for "after" screenshots
+        logger.info("Stopping dev server before code changes (will restart fresh after changes complete)")
+        self.screenshot_tools.stop_dev_server()
+
         return screenshots
 
     def capture_after_screenshots(self, before_screenshots: list[dict[str, str]]) -> list[dict[str, str]]:
@@ -1150,51 +1338,13 @@ Co-Authored-By: Claude <noreply@anthropic.com>"""
 
         logger.info("Capturing after screenshots to compare with before...")
 
-        # Check if dev server is still running from "before" screenshots
-        if self.screenshot_tools.dev_server_process:
-            logger.info("Dev server still running from before screenshots - checking if responsive...")
-
-            # Give dev server time to hot-reload changes (most dev servers auto-reload)
-            import time
-            logger.info("Waiting 5 seconds for dev server hot-reload to complete...")
-            time.sleep(5)
-
-            # Verify server is still responsive
-            try:
-                import requests
-                test_url = f"http://localhost:{self.screenshot_tools.dev_server_port}"
-                response = requests.get(test_url, timeout=5)
-                if response.status_code < 500:
-                    logger.info("✅ Dev server is responsive - using existing server with hot-reloaded code")
-                else:
-                    logger.warning(f"Dev server returned {response.status_code} - will restart")
-                    raise Exception("Server not healthy")
-            except Exception as e:
-                logger.warning(f"Dev server not responding: {e} - will restart")
-                old_port = self.screenshot_tools.dev_server_port
-                self.screenshot_tools.stop_dev_server()
-
-                # Wait for port to be released
-                logger.info("Waiting 3 seconds for port to be released...")
-                time.sleep(3)
-
-                logger.info("Restarting dev server with new code...")
-                # Try to restart - start_dev_server will find an available port automatically
-                # If the old port is still not available, it will use an alternative
-                if not self.screenshot_tools.start_dev_server(preferred_port=old_port):
-                    logger.error("❌ Failed to restart dev server - skipping after screenshots")
-                    return []
-
-                if self.screenshot_tools.dev_server_port != old_port:
-                    logger.warning(f"⚠️ Dev server restarted on different port: {old_port} -> {self.screenshot_tools.dev_server_port}")
-                logger.info("✅ Dev server restarted successfully")
-        else:
-            # Server not running - start fresh
-            logger.info("Dev server not running - starting fresh...")
-            if not self.screenshot_tools.start_dev_server():
-                logger.error("❌ Failed to start dev server - skipping after screenshots")
-                return []
-            logger.info("✅ Dev server started successfully")
+        # Server was stopped after "before" screenshots to avoid hot-reload issues
+        # Now start fresh with cleared cache for "after" screenshots
+        logger.info("Starting fresh dev server with new code (clearing cache to avoid compilation issues)...")
+        if not self.screenshot_tools.start_dev_server(clear_cache=True):
+            logger.error("❌ Failed to start dev server - skipping after screenshots")
+            return []
+        logger.info("✅ Dev server started successfully with new code")
 
         # Capture same URLs as before
         urls = [shot['url'] for shot in before_screenshots]

@@ -182,13 +182,32 @@ class ScreenshotTools:
         logger.error("No available ports found")
         return None
 
-    def start_dev_server(self, timeout: int = 120, preferred_port: Optional[int] = None) -> bool:
+    def _clear_build_cache(self) -> None:
+        """
+        Clear Next.js/Vite build cache to avoid stuck compilation issues.
+
+        This removes .next, .vite, dist, and .cache directories.
+        """
+        cache_dirs = ['.next', '.vite', 'dist', '.cache', 'out']
+
+        for cache_dir in cache_dirs:
+            cache_path = self.repo_path / cache_dir
+            if cache_path.exists():
+                try:
+                    import shutil
+                    shutil.rmtree(cache_path)
+                    logger.info(f"Cleared build cache: {cache_dir}/")
+                except Exception as e:
+                    logger.warning(f"Failed to clear {cache_dir}/: {e}")
+
+    def start_dev_server(self, timeout: int = 120, preferred_port: Optional[int] = None, clear_cache: bool = False) -> bool:
         """
         Start the development server and wait for it to be ready.
 
         Args:
             timeout: Maximum seconds to wait for server to start
             preferred_port: Preferred port to use (if None, auto-detect)
+            clear_cache: Whether to clear build cache before starting (helps with stuck compilations)
 
         Returns:
             True if server started successfully, False otherwise
@@ -197,6 +216,11 @@ class ScreenshotTools:
         if not command:
             logger.warning("No dev server command detected, skipping server start")
             return False
+
+        # Clear cache if requested (helps with stuck compilation issues)
+        if clear_cache:
+            logger.info("Clearing build cache before starting dev server...")
+            self._clear_build_cache()
 
         # Determine preferred port
         if preferred_port is None:
@@ -300,18 +324,43 @@ class ScreenshotTools:
             server_ready_seen = False
             compilation_in_progress = False
             last_compilation_check = start_time
+            compilation_errors = []
 
             while time.time() - start_time < timeout:
                 # Read any new output
                 line = read_output()
 
-                # Check server output for readiness indicators
+                # Check server output for readiness indicators and errors
                 if line:
                     line_lower = line.lower()
+
+                    # Check for compilation errors (fail fast)
+                    # Next.js uses ⨯ symbol for errors, webpack uses "ERROR", others use "error:"
+                    if any(err in line_lower for err in ['error:', 'failed to compile', 'module not found', 'cannot find module', 'syntaxerror', 'typeerror']) or '⨯' in line:
+                        compilation_errors.append(line.strip())
+                        logger.error(f"❌ Compilation error detected: {line.strip()}")
+
+                        # Keep reading more lines after error to capture full error message
+                        # (Next.js often prints error across multiple lines)
+                        for _ in range(5):  # Read next 5 lines to capture full error
+                            next_line = read_output()
+                            if next_line:
+                                compilation_errors.append(next_line.strip())
+                                logger.error(f"  {next_line.strip()}")
+
+                        # If we have error lines, fail immediately (don't wait for 3 errors)
+                        if len(compilation_errors) >= 1:
+                            logger.error(f"❌ Compilation error detected - failing fast")
+                            logger.error(f"Full error context (last 50 lines of output):")
+                            for err_line in server_output_lines[-50:]:
+                                logger.error(f"  {err_line}")
+                            return False
+
                     # Check for server ready messages
                     if any(msg in line_lower for msg in ['ready in', 'compiled successfully', 'compiled client', 'compiled server']):
                         server_ready_seen = True
                         compilation_in_progress = False
+                        compilation_errors = []  # Clear errors on successful compilation
                         logger.info(f"📊 Dev server reports ready: {line.strip()}")
                     # Check for compilation start
                     elif 'compiling' in line_lower and not 'compiled' in line_lower:
@@ -321,6 +370,7 @@ class ScreenshotTools:
                     # Check for compilation completion
                     elif 'compiled' in line_lower:
                         compilation_in_progress = False
+                        compilation_errors = []  # Clear errors on successful compilation
                         logger.info(f"📊 Compilation completed: {line.strip()}")
 
                 # If we see compilation in progress, give it time (up to 60s from last compilation message)
@@ -331,9 +381,23 @@ class ScreenshotTools:
                         time.sleep(2)
                         continue
                     else:
-                        # Compilation taking too long, try HTTP anyway
-                        logger.warning(f"⚠️ Compilation taking longer than expected (>{int(time_since_compilation)}s)")
-                        compilation_in_progress = False
+                        # Compilation stuck - likely has errors that aren't being logged clearly
+                        logger.error(f"❌ Compilation stuck for >{int(time_since_compilation)}s without completing")
+                        logger.error(f"This usually indicates compilation errors in the code")
+
+                        # Show ALL recent output to help diagnose the issue
+                        logger.error(f"Full server output (last 50 lines):")
+                        for line in server_output_lines[-50:]:
+                            logger.error(f"  {line}")
+
+                        if compilation_errors:
+                            logger.error(f"Errors detected during compilation:")
+                            for err_line in compilation_errors[:10]:
+                                logger.error(f"  {err_line}")
+                        else:
+                            logger.error(f"No explicit errors detected - compilation may be hanging or very slow")
+
+                        return False
 
                 # Try HTTP request (shorter timeout, more attempts)
                 try:
