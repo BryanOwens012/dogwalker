@@ -712,6 +712,19 @@ Steps to fix:
         import subprocess
 
         try:
+            # Check if there are any changes to commit
+            status_result = subprocess.run(
+                ["git", "status", "--porcelain"],
+                cwd=self.repo_path,
+                capture_output=True,
+                text=True,
+                timeout=10
+            )
+
+            if not status_result.stdout.strip():
+                logger.info("No changes to commit - skipping commit")
+                return
+
             # Stage all changes
             subprocess.run(
                 ["git", "add", "-A"],
