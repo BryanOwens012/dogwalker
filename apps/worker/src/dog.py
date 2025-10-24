@@ -440,8 +440,10 @@ Follow the commit strategy you outlined in the implementation plan.
             result = self.coder.run(implementation_prompt)
 
             # Verify Aider actually made file changes (not just responded)
-            # Check git status to see if any files were modified
+            # Check BOTH uncommitted changes AND recent commits (Aider might auto-commit despite flag)
             import subprocess
+
+            # Check for uncommitted changes
             git_status = subprocess.run(
                 ["git", "status", "--porcelain"],
                 cwd=self.repo_path,
@@ -449,6 +451,18 @@ Follow the commit strategy you outlined in the implementation plan.
                 text=True,
                 timeout=10
             )
+
+            # Check for commits made by Aider (in case it auto-committed despite auto_commits=False)
+            git_log = subprocess.run(
+                ["git", "log", "--oneline", "-5"],
+                cwd=self.repo_path,
+                capture_output=True,
+                text=True,
+                timeout=10
+            )
+
+            logger.info(f"Git status after Aider run:\n{git_status.stdout if git_status.stdout else '(no uncommitted changes)'}")
+            logger.info(f"Recent git commits:\n{git_log.stdout}")
 
             if not git_status.stdout.strip():
                 if allow_no_changes:
