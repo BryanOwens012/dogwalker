@@ -325,6 +325,7 @@ class ScreenshotTools:
             compilation_in_progress = False
             last_compilation_check = start_time
             compilation_errors = []
+            consecutive_timeouts = 0  # Track repeated HTTP timeouts
 
             while time.time() - start_time < timeout:
                 # Read any new output
@@ -399,20 +400,38 @@ class ScreenshotTools:
 
                         return False
 
-                # Try HTTP request (shorter timeout, more attempts)
+                # Try HTTP request with adaptive timeout
+                # Use longer timeout if we saw "Ready" message (server might be compiling pages on-demand)
+                http_timeout = 30 if server_ready_seen else 10
                 try:
                     import requests
-                    # Use 10s timeout - enough for most responses, but not too long
-                    response = requests.get(f"http://localhost:{self.dev_server_port}", timeout=10)
+                    response = requests.get(f"http://localhost:{self.dev_server_port}", timeout=http_timeout)
                     if response.status_code < 500:  # Server is responding
                         logger.info(f"✅ Dev server ready on port {self.dev_server_port}")
                         return True
+                    consecutive_timeouts = 0  # Reset on successful connection
                 except requests.exceptions.Timeout:
-                    # Timeout - server might be compiling
-                    if not compilation_in_progress:
-                        logger.debug(f"HTTP request timed out (server may be compiling)")
+                    # Timeout - page might be compiling on-demand or hanging
+                    consecutive_timeouts += 1
+                    elapsed = int(time.time() - start_time)
+                    logger.warning(f"⚠️ HTTP request timed out after {http_timeout}s ({elapsed}s total elapsed, {consecutive_timeouts} consecutive timeouts)")
+                    logger.warning(f"   This could mean: (1) page compiling on-demand, (2) page has infinite loop/hang, (3) network issue")
+
+                    # If we've had 4 consecutive timeouts (120s total), give up
+                    if consecutive_timeouts >= 4:
+                        logger.error(f"❌ Too many consecutive HTTP timeouts ({consecutive_timeouts})")
+                        logger.error(f"Server says it's ready but HTTP requests are timing out - likely a code bug")
+                        logger.error(f"Recent server output:")
+                        for line in server_output_lines[-30:]:
+                            logger.error(f"  {line}")
+                        return False
+                except requests.exceptions.ConnectionError as e:
+                    # Connection refused - server not listening yet
+                    consecutive_timeouts = 0  # Reset on connection errors (different issue)
+                    logger.debug(f"Connection refused (server not listening yet)")
                 except Exception as e:
-                    logger.debug(f"HTTP check failed: {type(e).__name__}")
+                    consecutive_timeouts = 0  # Reset on other errors
+                    logger.warning(f"HTTP check failed: {type(e).__name__}: {e}")
                     pass
 
                 # Check if process died
