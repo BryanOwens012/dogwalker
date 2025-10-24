@@ -72,14 +72,14 @@ const HomePage = () => {
                       title: "Developer makes request",
                       description:
                         "Mention @dogwalker with feature request in any Slack channel or thread",
-                      marginTop: "mt-8",
+                      marginTop: "mt-16",
                     },
                     {
                       number: 2,
                       title: "Dog acknowledges task",
                       description:
                         "AI agent confirms it's working on the request",
-                      marginTop: "mt-16",
+                      marginTop: "",
                     },
                     {
                       number: 3,
