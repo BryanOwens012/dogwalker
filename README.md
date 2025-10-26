@@ -6,7 +6,7 @@ Built solo in ~2 days using AI-assisted development.
 
 ## See It In Action
 
-After the Dogwalker is @-mentioned, it gets an available AI dog (Coregi) to generate a plan, implement changes, and open a PR.
+After the Dogwalker is @-mentioned, it gets an available AI dog to generate a plan, implement changes, and open a PR.
 
 <p align="center">
   <img src="apps/frontend/public/slack-thread-example.png" alt="Real Slack thread showing Dogwalker in action" width="600">
