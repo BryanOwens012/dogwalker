@@ -3,10 +3,7 @@ updates:
   - package-ecosystem: "npm"
     directory: "/apps/frontend"
     schedule:
-      interval: "weekly"
-      day: "monday"
-      time: "09:00"
-      timezone: "America/New_York"
+      interval: "monthly"
     open-pull-requests-limit: 10
     reviewers:
       - "BryanOwens012"
@@ -23,10 +20,7 @@ updates:
   - package-ecosystem: "pip"
     directory: "/"
     schedule:
-      interval: "weekly"
-      day: "monday"
-      time: "09:00"
-      timezone: "America/New_York"
+      interval: "monthly"
     open-pull-requests-limit: 10
     reviewers:
       - "BryanOwens012"
@@ -42,10 +36,7 @@ updates:
   - package-ecosystem: "pip"
     directory: "/apps/api"
     schedule:
-      interval: "weekly"
-      day: "monday"
-      time: "09:00"
-      timezone: "America/New_York"
+      interval: "monthly"
     open-pull-requests-limit: 10
     reviewers:
       - "BryanOwens012"
@@ -61,10 +52,7 @@ updates:
   - package-ecosystem: "pip"
     directory: "/apps/orchestrator"
     schedule:
-      interval: "weekly"
-      day: "monday"
-      time: "09:00"
-      timezone: "America/New_York"
+      interval: "monthly"
     open-pull-requests-limit: 10
     reviewers:
       - "BryanOwens012"
@@ -80,10 +68,7 @@ updates:
   - package-ecosystem: "pip"
     directory: "/apps/worker"
     schedule:
-      interval: "weekly"
-      day: "monday"
-      time: "09:00"
-      timezone: "America/New_York"
+      interval: "monthly"
     open-pull-requests-limit: 10
     reviewers:
       - "BryanOwens012"
@@ -99,10 +84,7 @@ updates:
   - package-ecosystem: "pip"
     directory: "/apps/shared"
     schedule:
-      interval: "weekly"
-      day: "monday"
-      time: "09:00"
-      timezone: "America/New_York"
+      interval: "monthly"
     open-pull-requests-limit: 10
     reviewers:
       - "BryanOwens012"
