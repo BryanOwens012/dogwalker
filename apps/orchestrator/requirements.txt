@@ -1,6 +1,6 @@
 # Orchestrator dependencies
 slack-bolt>=1.18.0
-slack-sdk>=3.23.0
+slack-sdk>=3.41.0
 celery>=5.3.4
 redis>=5.0.1  # For Celery broker and dog task tracking
 python-dotenv>=1.0.0
