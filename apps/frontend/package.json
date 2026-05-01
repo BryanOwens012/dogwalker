@@ -11,14 +11,14 @@
   "dependencies": {
     "clsx": "^2.1.1",
     "lucide-react": "^0.454.0",
-    "next": "^16.2.3",
-    "npm": "^11.12.1",
+    "next": "^16.2.4",
+    "npm": "^11.13.0",
     "react": "^19.2.5",
     "react-dom": "^19",
     "tailwind-merge": "^2.5.5"
   },
   "devDependencies": {
-    "@tailwindcss/postcss": "^4.2.2",
+    "@tailwindcss/postcss": "^4.2.4",
     "@types/node": "^22",
     "@types/react": "^19",
     "@types/react-dom": "^19",
