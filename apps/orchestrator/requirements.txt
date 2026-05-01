@@ -7,4 +7,4 @@ python-dotenv>=1.0.0
 requests>=2.31.0  # For downloading images from Slack
 
 # Shared dependencies (install from ../shared)
-PyGithub>=2.1.1
+PyGithub>=2.9.1
