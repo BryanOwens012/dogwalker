@@ -10,7 +10,7 @@
 
 # Shared dependencies (duplicated here for convenience)
 python-dotenv>=1.0.0
-PyGithub>=2.1.1
+PyGithub>=2.9.1
 
 # Orchestrator dependencies
 slack-bolt>=1.18.0
