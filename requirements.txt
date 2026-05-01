@@ -13,7 +13,7 @@ python-dotenv>=1.0.0
 PyGithub>=2.1.1
 
 # Orchestrator dependencies
-slack-bolt>=1.18.0
+slack-bolt>=1.28.0
 slack-sdk>=3.23.0
 celery>=5.3.4
 redis>=5.0.1
