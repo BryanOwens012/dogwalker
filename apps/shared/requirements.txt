@@ -1,5 +1,5 @@
 # Shared dependencies
-python-dotenv>=1.0.0
+python-dotenv>=1.2.2
 PyGithub>=2.1.1
 pytz>=2024.1
 requests>=2.31.0
