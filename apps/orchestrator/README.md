@@ -213,7 +213,9 @@ This app deploys as a **web service** that runs the Slack bot.
 
 **Service name**: `orchestrator`
 **Build command**: `pip install -r requirements.txt`
-**Start command**: `python src/bot.py` (defined in railway.json)
+**Start command**: `python src/bot.py`
+
+Both commands are defined in `.railway/railway.ts` at the repo root (Railway Infrastructure as Code), which also declares the `worker`, `beat`, and Redis services. Apply changes with `railway config plan` and `railway config apply` from the repo root; see `docs/DEPLOYMENT.md`.
 
 ### Required Environment Variables
 
