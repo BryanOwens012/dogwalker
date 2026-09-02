@@ -311,7 +311,7 @@ For personal use or development, local deployment is recommended.
 Every Railway service is declared in one file, `.railway/railway.ts` (Railway's Infrastructure as Code, or IaC). It defines the Redis database plus the `orchestrator`, `worker`, and `beat` services: source repo and root directory, build and start commands, restart policy, and the variables each service reads. The old per-service `railway.json` files are gone; Railway stops reading that format on 2026-12-01.
 
 ```bash
-cd .railway && npm install && npm run typecheck && cd ..   # authoring deps + typecheck
+cd .railway && npm install && npm run typecheck && npm test && cd ..   # authoring deps, typecheck, graph test
 railway config plan                                        # preview what Railway would create or change
 railway config apply                                       # apply after confirming the plan
 ```
@@ -330,7 +330,7 @@ Secrets are never written into `.railway/railway.ts`. Each service lists them as
 
 - Change build or start commands, add a service, or scale replicas by editing `.railway/railway.ts`, then run `railway config plan` and `railway config apply`. The dashboard is not the source of truth.
 - Every variable a service reads must appear in the file (as `preserve()` for secrets). A variable set in Railway but missing from the file shows up in the plan as a deletion, so read the plan before applying.
-- Never add a `railway.json` or `railway.toml`: a service cannot be managed by both systems, and `railway config plan` refuses to run while one exists.
+- Never add a `railway.json` or `railway.toml`: a service cannot be managed by both systems, and Railway blocks `railway config plan` for any service still managed by one.
 
 ### 5. Verify Deployment
 

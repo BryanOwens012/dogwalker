@@ -151,8 +151,8 @@ class UserCard extends React.Component {
 
 ### Railway Infrastructure as Code
 - `.railway/railway.ts` is the single source of truth for every Railway service (Redis, `orchestrator`, `worker`, `beat`): source, build/start commands, restart policy, and the variables each reads. The dashboard is not.
-- Never add a `railway.json` or `railway.toml`. Config as Code is deprecated (Railway stops reading it 2026-12-01) and a service cannot be managed by both systems.
-- Validate a change with `cd .railway && npm install && npm run typecheck`, then `railway config plan` from the repo root. `railway config apply` changes live infrastructure and is Bryan's to run, never an agent's.
+- Never add a `railway.json` or `railway.toml`. Config as Code is deprecated (Railway stops reading it 2026-12-01), and Railway blocks `railway config plan` for any service still managed by one.
+- Validate a change with `cd .railway && npm install && npm run typecheck && npm test` (the test evaluates the file the way the CLI does and checks the graph), then `railway config plan` from the repo root. `railway config apply` changes live infrastructure and is Bryan's to run, never an agent's.
 - List every variable a service reads in its `env` block, secrets as `preserve()`. A variable absent from the file is planned as a deletion.
 - No HTTP healthcheck on these services: none of them listen on `PORT`, so Railway's healthcheck could never pass.
 
