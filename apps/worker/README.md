@@ -98,6 +98,8 @@ python test_aider.py
 
 This app deploys as a worker service that processes Celery tasks.
 
+Two Railway services run from this directory, both declared in `.railway/railway.ts` at the repo root (Railway Infrastructure as Code): `worker` (`celery ... worker`, whose build also runs `playwright install chromium` for the screenshot tools) and `beat` (`celery ... beat`, the periodic-task scheduler). See `docs/DEPLOYMENT.md` for the plan/apply workflow.
+
 **Required services:**
 - Redis (message broker)
 - Orchestrator app (to create tasks)

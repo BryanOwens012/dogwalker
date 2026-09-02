@@ -94,7 +94,7 @@ playwright install
 
 This is required for the web browsing and screenshot features. Playwright uses headless browsers to capture screenshots of websites.
 
-**Railway Note:** Railway automatically installs Playwright browsers during deployment. For local development, you must run `playwright install` manually.
+**Railway Note:** On Railway the worker's build command (in `.railway/railway.ts`) installs Chromium. For local development, you must run `playwright install` manually.
 
 ### 2. Start Redis
 
@@ -301,85 +301,38 @@ Add the dog GitHub account to your target repository:
 
 For personal use or development, local deployment is recommended.
 
-### 1. Create Railway Project
+### 1. Create the Railway Project
 
-1. Go to https://railway.app
-2. Click "New Project"
-3. Choose "Empty Project"
-4. Name: "dogwalker"
+1. Go to https://railway.com, click "New Project", choose "Empty Project", and name it `dogwalker`.
+2. Link your checkout of this repo to it: run `railway login`, then `railway link` and pick the `dogwalker` project and its `production` environment.
 
-### 2. Add Redis Service
+### 2. Review and Apply the Infrastructure as Code
 
-1. Click "New" → "Database" → "Add Redis"
-2. Railway automatically sets `REDIS_URL` environment variable
+Every Railway service is declared in one file, `.railway/railway.ts` (Railway's Infrastructure as Code, or IaC). It defines the Redis database plus the `orchestrator`, `worker`, and `beat` services: source repo and root directory, build and start commands, restart policy, and the variables each service reads. The old per-service `railway.json` files are gone; Railway stops reading that format on 2026-12-01.
 
-### 3. Deploy Orchestrator
+```bash
+cd .railway && npm install && npm run typecheck && npm test && cd ..   # authoring deps, typecheck, graph test
+railway config plan                                        # preview what Railway would create or change
+railway config apply                                       # apply after confirming the plan
+```
 
-1. Click "New" → "GitHub Repo"
-2. Select your dogwalker repo
-3. Root Directory: `/apps/orchestrator`
-4. Name: "orchestrator"
-5. Add environment variables (see list above)
-6. Deploy
+`plan` is read-only. `apply` re-runs the plan and asks for confirmation before changing anything. The first apply creates all four services; Railway will ask you to grant its GitHub app access to this repo so the services can build from it.
 
-Railway will:
-- Build: `pip install -r requirements.txt`
-- Start: `python src/bot.py` (from railway.json)
+The worker's build command installs Playwright's Chromium (`playwright install chromium`), which the screenshot tools need. It adds roughly 150 MB to the image.
 
-### 4. Deploy Worker
+### 3. Set Environment Variables
 
-1. Click "New" → "GitHub Repo" (same repo)
-2. Root Directory: `/apps/worker`
-3. Name: "worker"
-4. Add same environment variables as orchestrator
-5. **Important:** Add build command to install Playwright browsers:
-   - Go to service Settings → Deploy
-   - Build Command: `pip install -r requirements.txt && playwright install chromium`
-6. Deploy
-
-Railway will:
-- Build: `pip install -r requirements.txt && playwright install chromium`
-- Start: `celery -A src.celery_app worker --loglevel=info`
-
-**Note:** The Playwright browser installation adds ~150MB to the deployment size but is necessary for web screenshot capabilities.
-
-### 4.5. Deploy Beat Scheduler (Recommended)
-
-The beat scheduler runs periodic tasks (e.g., automatic GitHub invitation acceptance).
-
-1. Click "New" → "GitHub Repo" (same repo)
-2. Root Directory: `/apps/worker`
-3. Name: "beat"
-4. Add same environment variables as orchestrator and worker
-5. **Important:** Change the start command:
-   - Go to service Settings → Deploy
-   - Start Command: `celery -A src.celery_app beat --loglevel=info`
-6. Deploy
-
-Railway will:
-- Build: `pip install -r requirements.txt`
-- Start: `celery -A src.celery_app beat --loglevel=info`
-
-**What does Beat do?**
-- Runs periodic tasks automatically (every 5 minutes)
-- **Automatic GitHub invitation acceptance**: When someone invites a dog to collaborate on a repository, the beat scheduler automatically accepts the invitation
-- Logs all activity for audit trail
-
-**Note:** Beat is optional but recommended for production. Without it:
-- Dogs won't automatically accept GitHub repository invitations
-- You'll need to manually accept invitations for each dog account
-
-### 5. Set Environment Variables
-
-For both orchestrator and worker services:
-
-1. Go to service → Variables
-2. Add all required variables from `.env.example`
-3. Use `${{REDIS_URL}}` for Redis (Railway provides this)
+Secrets are never written into `.railway/railway.ts`. Each service lists them as `preserve()`, which keeps whatever value is set in Railway. After the first apply, open each service (`orchestrator`, `worker`, `beat`) in the dashboard and add the variables from `.env.example`. `REDIS_URL` needs no manual entry: the file wires it to the Redis service. Railway redeploys a service when its variables change.
 
 **Important:** Each service needs the same environment variables!
 
-### 6. Verify Deployment
+### 4. Keep the Config in Sync
+
+- Change build or start commands, add a service, or scale replicas by editing `.railway/railway.ts`, then run `railway config plan` and `railway config apply`. The dashboard is not the source of truth.
+- Every variable a service reads must appear in the file (as `preserve()` for secrets). A variable set in Railway but missing from the file shows up in the plan as a deletion, so read the plan before applying.
+- Never add a `railway.json` or `railway.toml`: a service cannot be managed by both systems, and Railway blocks `railway config plan` for any service still managed by one.
+
+### 5. Verify Deployment
 
 Check logs for each service:
 

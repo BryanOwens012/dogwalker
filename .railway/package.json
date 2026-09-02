@@ -1,0 +1,20 @@
+{
+  "name": "dogwalker-railway-iac",
+  "private": true,
+  "type": "module",
+  "description": "Railway Infrastructure as Code authoring dependencies. Used only by the Railway CLI; never by the app at runtime.",
+  "scripts": {
+    "typecheck": "tsc --noEmit -p .",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "railway": "^3.11.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.9.0",
+    "vitest": "^4.1.0"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}
