@@ -4,11 +4,11 @@ Simple, modern Next.js landing page for Dogwalker.
 
 ## Overview
 
-This is a lightweight landing page built with Next.js 15, React 19, TypeScript, and Tailwind CSS v4. It follows modern best practices with server components and optimized performance.
+This is a lightweight landing page built with Next.js 16, React 19, TypeScript, and Tailwind CSS v4. It follows modern best practices with server components and optimized performance.
 
 ## Features
 
-- **Next.js 15** - Latest App Router with React Server Components
+- **Next.js 16** - Latest App Router with React Server Components
 - **TypeScript** - Type-safe development with strict mode
 - **Tailwind CSS v4** - Modern utility-first CSS with OKLCH colors
 - **Responsive design** - Works on desktop, tablet, and mobile
@@ -18,9 +18,9 @@ This is a lightweight landing page built with Next.js 15, React 19, TypeScript, 
 
 ## Tech Stack
 
-- **Framework:** Next.js 15.2.4
+- **Framework:** Next.js 16
 - **UI:** React 19
-- **Styling:** Tailwind CSS v4.1.9
+- **Styling:** Tailwind CSS v4
 - **Icons:** Lucide React
 - **Language:** TypeScript 5
 

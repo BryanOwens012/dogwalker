@@ -1,13 +1,18 @@
 # Worker dependencies
+# aider-chat pins python-dotenv, requests, and beautifulsoup4 to exact versions in
+# every release (python-dotenv 1.2.1, requests 2.32.5, beautifulsoup4 4.14.3 as of
+# aider-chat 0.86.2). Keep those three floors at or below its pins, here and in
+# every other requirements file, or the combined install in the root
+# requirements.txt stops resolving. Check aider-chat's metadata before raising one.
 aider-chat>=0.70.0
 anthropic>=0.39.0
 celery>=5.6.3
 redis>=5.3.1
-python-dotenv>=1.0.0  # held back at upgrade-deps time: aider-chat hard-pins python-dotenv to an exact version (<=1.2.1 as of aider-chat 0.86.2) in every release
+python-dotenv>=1.0.0  # capped by aider-chat (above)
 slack-bolt>=1.30.0
 playwright>=1.63.0
-beautifulsoup4>=4.12.0  # held back at upgrade-deps time: >=4.15.0 makes this file unresolvable alongside aider-chat, which hard-pins beautifulsoup4 to an exact version (<=4.14.3 as of aider-chat 0.86.2) in every release
-requests>=2.31.0  # held back at upgrade-deps time: aider-chat hard-pins requests to an exact version (<=2.32.5 as of aider-chat 0.86.2) in every release
+beautifulsoup4>=4.12.0  # capped by aider-chat (above)
+requests>=2.31.0  # capped by aider-chat (above)
 duckduckgo-search>=4.5.0
 
 # Shared dependencies

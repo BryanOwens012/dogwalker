@@ -3,8 +3,8 @@ slack-bolt>=1.30.0
 slack-sdk>=3.44.1
 celery>=5.6.3
 redis>=5.3.1  # For Celery broker and dog task tracking
-python-dotenv>=1.0.0  # held back at upgrade-deps time: aider-chat (apps/worker) hard-pins python-dotenv to an exact version (<=1.2.1 as of aider-chat 0.86.2); kept in lockstep with the other requirements.txt files so `pip install -r apps/shared/requirements.txt -r apps/orchestrator/requirements.txt -r apps/worker/requirements.txt` still resolves
-requests>=2.31.0  # For downloading images from Slack. Held back at upgrade-deps time: aider-chat (apps/worker) hard-pins requests to an exact version (<=2.32.5 as of aider-chat 0.86.2); kept in lockstep with the other requirements.txt files so `pip install -r apps/shared/requirements.txt -r apps/orchestrator/requirements.txt -r apps/worker/requirements.txt` still resolves
+python-dotenv>=1.0.0  # capped by aider-chat; see apps/worker/requirements.txt
+requests>=2.31.0  # For downloading images from Slack; capped by aider-chat, see apps/worker/requirements.txt
 
 # Shared dependencies (install from ../shared)
 PyGithub>=2.10.0
