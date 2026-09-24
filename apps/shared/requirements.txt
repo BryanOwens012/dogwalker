@@ -1,6 +1,6 @@
 # Shared dependencies
-python-dotenv>=1.0.0
-PyGithub>=2.1.1
-pytz>=2024.1
-requests>=2.31.0
-redis>=5.0.0
+python-dotenv>=1.0.0  # capped by aider-chat; see apps/worker/requirements.txt
+PyGithub>=2.10.0
+pytz>=2024.2
+requests>=2.31.0  # capped by aider-chat; see apps/worker/requirements.txt
+redis>=5.3.1

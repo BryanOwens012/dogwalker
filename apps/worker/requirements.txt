@@ -1,14 +1,19 @@
 # Worker dependencies
+# aider-chat pins python-dotenv, requests, and beautifulsoup4 to exact versions in
+# every release (python-dotenv 1.2.1, requests 2.32.5, beautifulsoup4 4.14.3 as of
+# aider-chat 0.86.2). Keep those three floors at or below its pins, here and in
+# every other requirements file, or the combined install in the root
+# requirements.txt stops resolving. Check aider-chat's metadata before raising one.
 aider-chat>=0.70.0
 anthropic>=0.39.0
-celery>=5.3.4
-redis>=5.0.1
-python-dotenv>=1.0.0
-slack-bolt>=1.18.0
-playwright>=1.40.0
-beautifulsoup4>=4.12.0
-requests>=2.31.0
-duckduckgo-search>=4.0.0
+celery>=5.6.3
+redis>=5.3.1
+python-dotenv>=1.0.0  # capped by aider-chat (above)
+slack-bolt>=1.30.0
+playwright>=1.63.0
+beautifulsoup4>=4.12.0  # capped by aider-chat (above)
+requests>=2.31.0  # capped by aider-chat (above)
+duckduckgo-search>=4.5.0
 
 # Shared dependencies
-PyGithub>=2.1.1
+PyGithub>=2.10.0

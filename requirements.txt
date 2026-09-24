@@ -9,14 +9,14 @@
 # pip install -r apps/shared/requirements.txt -r apps/orchestrator/requirements.txt -r apps/worker/requirements.txt
 
 # Shared dependencies (duplicated here for convenience)
-python-dotenv>=1.0.0
-PyGithub>=2.1.1
+python-dotenv>=1.0.0  # capped by aider-chat; see apps/worker/requirements.txt
+PyGithub>=2.10.0
 
 # Orchestrator dependencies
-slack-bolt>=1.18.0
-slack-sdk>=3.23.0
-celery>=5.3.4
-redis>=5.0.1
+slack-bolt>=1.30.0
+slack-sdk>=3.44.1
+celery>=5.6.3
+redis>=5.3.1
 
 # Worker dependencies
 aider-chat>=0.70.0
