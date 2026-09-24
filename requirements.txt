@@ -9,7 +9,7 @@
 # pip install -r apps/shared/requirements.txt -r apps/orchestrator/requirements.txt -r apps/worker/requirements.txt
 
 # Shared dependencies (duplicated here for convenience)
-python-dotenv>=1.0.0  # capped by aider-chat; see apps/worker/requirements.txt
+python-dotenv>=1.2.3  # capped by aider-chat; see apps/worker/requirements.txt
 PyGithub>=2.10.0
 
 # Orchestrator dependencies
