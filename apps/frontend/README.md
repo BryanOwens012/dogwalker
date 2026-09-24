@@ -28,7 +28,7 @@ This is a lightweight landing page built with Next.js 15, React 19, TypeScript, 
 
 ### Prerequisites
 
-- Node.js 20.17.0 or higher
+- Node.js 24.0.0 or higher
 - npm or yarn
 
 ### Setup
@@ -76,7 +76,7 @@ npm run build
 ### Docker
 
 ```dockerfile
-FROM node:20-alpine
+FROM node:24-alpine
 WORKDIR /app
 COPY package*.json ./
 RUN npm ci --only=production
