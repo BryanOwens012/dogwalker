@@ -2,7 +2,7 @@
 slack-bolt>=1.30.0
 slack-sdk>=3.44.1
 celery>=5.6.3
-redis>=5.3.1  # For Celery broker and dog task tracking
+redis>=8.1.0  # For Celery broker and dog task tracking
 python-dotenv>=1.0.0  # capped by aider-chat; see apps/worker/requirements.txt
 requests>=2.31.0  # For downloading images from Slack; capped by aider-chat, see apps/worker/requirements.txt
 
