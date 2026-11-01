@@ -14,7 +14,7 @@ PyGithub>=2.10.0
 
 # Orchestrator dependencies
 slack-bolt>=1.30.0
-slack-sdk>=3.44.1
+slack-sdk>=3.45.0
 celery>=5.6.3
 redis>=5.3.1
 
