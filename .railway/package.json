@@ -8,7 +8,7 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "railway": "^3.11.0"
+    "railway": "^3.16.0"
   },
   "devDependencies": {
     "typescript": "^5.9.3",
